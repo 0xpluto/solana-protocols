@@ -1,0 +1,37 @@
+name: Protocol request
+description: Ask for support for a Solana AMM or program not covered yet
+title: "[protocol] "
+labels: ["protocol"]
+body:
+  - type: input
+    id: program
+    attributes:
+      label: Program ID
+      placeholder: 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
+    validations: { required: true }
+  - type: input
+    id: name
+    attributes:
+      label: Protocol name
+      placeholder: Orca Whirlpool
+    validations: { required: true }
+  - type: checkboxes
+    id: surface
+    attributes:
+      label: What do you need?
+      options:
+        - label: Decode accounts / instructions
+        - label: Swap math (quote an amount out)
+        - label: Instruction building
+        - label: Event / log parsing
+  - type: input
+    id: signature
+    attributes:
+      label: A landed swap signature
+      description: Worth more than any description — it lets the real bytes be replayed.
+      placeholder: 2Z3gpRuN...
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Published IDL, docs, existing SDK, known layout quirks.

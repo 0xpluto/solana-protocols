@@ -1,0 +1,31 @@
+[package]
+name = "solana-account-ingest"
+version.workspace = true
+edition.workspace = true
+authors = ["0xpluto <75406541+0xpluto@users.noreply.github.com>"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/0xpluto/solana-protocols"
+keywords = ["solana", "ingest", "accounts", "geyser"]
+categories = ["cryptography::cryptocurrencies"]
+description = "Ingest layer: normalize RPC/gRPC account updates and drive them through the handler registry"
+
+
+[features]
+default = []
+# Enable the concrete `RpcFetcher` (solana-client-backed AccountFetcher).
+rpc = ["dep:solana-client", "dep:solana-sdk"]
+
+[dependencies]
+solana-account-traits = { version = "0.1.1", path = "../traits" }
+solana-pubkey = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+# Optional: pulled in when the `rpc` feature is enabled.
+solana-client = { workspace = true, optional = true }
+solana-sdk = { workspace = true, optional = true }
+
+[lints]
+workspace = true

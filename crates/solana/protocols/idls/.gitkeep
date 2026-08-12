@@ -1,0 +1,7 @@
+# IDL files for protocol verification
+#
+# To add a protocol IDL:
+# 1. Fetch: solana idl fetch <PROGRAM_ID> -o idls/<protocol>.json
+# 2. Compute hash: sha256sum idls/<protocol>.json | cut -d' ' -f1
+# 3. Add entry to EXPECTED_IDL_HASHES in build.rs
+# 4. Enable verification: cargo build --features idl-verify

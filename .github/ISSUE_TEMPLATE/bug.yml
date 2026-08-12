@@ -1,0 +1,19 @@
+name: Bug
+description: Something decodes, quotes, or builds wrong
+labels: ["bug"]
+body:
+  - type: input
+    id: evidence
+    attributes:
+      label: Transaction signature or account address
+      description: Public, and it lets the exact bytes be replayed. Please include one.
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit

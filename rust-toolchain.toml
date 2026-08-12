@@ -1,0 +1,10 @@
+# Pinned so local and CI cannot drift. They already had: CI ran 1.91.1 while
+# workstations ran 1.97.1, and rustfmt output differs between versions — so
+# `cargo fmt` locally could produce exactly what CI rejects.
+#
+# Bumping is deliberate: raise the version here, run
+# `cargo clippy --workspace --all-targets` and `cargo fmt --all`, and ship the
+# fallout as its OWN commit rather than riding a feature branch.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]

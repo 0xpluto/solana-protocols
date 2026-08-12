@@ -1,0 +1,28 @@
+{
+  "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+  "event": "TradeEvent",
+  "signature": "5zFa6mrwHcBExrdas3YLJFbi7bUhDYvSsCgsJncb82NEXVkMeGWgBzA6Wv4cbnVGW1dvk5brTfu8HMssaXCWLcq",
+  "slot": 438647725,
+  "captured_at": "2026-08-11",
+  "note": "emit_cpi! body only (tag + event disc stripped). Fee block at [121..217].",
+  "body_len": 350,
+  "body_b64": "mV/r+dPFdJpZImRDdxHgghWIswFrNagGDRTvZWGdSh8fxFchAAAAAIr1aL4HDwAAATQMGPb6GH/MVObYG53gtNKquP6O65nIeC/B7p4QY0QxfFl7agAAAAABrkLABwAAAL30rsBubwMAAQIfxAAAAAC9XJx03XACAGCMzB386WG0O3ecGRUFpuLTv0XVpNtGGK12yC1hdUU1XwAAAAAAAAD8FlEAAAAAAGB7Q5ev0LWSewm/UXi7xgqgqzxp0WZLXyAKZaRRXo40HgAAAAAAAAB4mxkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMAAABidXkAAAAAAAAAAAAAAAAAAAAAAIgTAAAAAAAAfosoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAfxFchAAAAAAGuQsAHAAAAAQIfxAAAAAA=",
+  "expected": {
+    "mint": "BKiDGNgtP7qtAt4jRGZhbEkBFGVhsp1doKmRgxEYpump",
+    "sol_amount": 559399967,
+    "token_amount": 16525933737354,
+    "is_buy": true,
+    "user": "4WAuAYr7wibrYoCy5ceCQesnuxkkHvyCN2NvSBtba19z",
+    "timestamp": 1786468732,
+    "virtual_sol_reserves": 33290366465,
+    "virtual_token_reserves": 966946399909053,
+    "real_sol_reserves": 3290366465,
+    "real_token_reserves": 687046399909053,
+    "fee_recipient": "7VtfL8fvgNfhz17qKRMjzQEXgbdpnHHHQRh54R9jP2RJ",
+    "fee_basis_points": 95,
+    "fee": 5314300,
+    "creator": "7Vd9x8t5HFTZ6qu5bA4qhpE95U26V3s4VPGLsfWKivtB",
+    "creator_fee_basis_points": 30,
+    "creator_fee": 1678200
+  }
+}

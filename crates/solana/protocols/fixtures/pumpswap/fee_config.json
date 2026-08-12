@@ -1,0 +1,159 @@
+{
+ "flat": {
+  "lp": 25,
+  "protocol": 5,
+  "creator": 0
+ },
+ "tiers": [
+  {
+   "threshold": "0",
+   "lp": 2,
+   "protocol": 93,
+   "creator": 30
+  },
+  {
+   "threshold": "420000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 95
+  },
+  {
+   "threshold": "1470000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 90
+  },
+  {
+   "threshold": "2460000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 85
+  },
+  {
+   "threshold": "3440000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 80
+  },
+  {
+   "threshold": "4420000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 75
+  },
+  {
+   "threshold": "9820000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 70
+  },
+  {
+   "threshold": "14740000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 65
+  },
+  {
+   "threshold": "19650000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 60
+  },
+  {
+   "threshold": "24560000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 55
+  },
+  {
+   "threshold": "29470000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 50
+  },
+  {
+   "threshold": "34380000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 45
+  },
+  {
+   "threshold": "39300000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 40
+  },
+  {
+   "threshold": "44210000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 35
+  },
+  {
+   "threshold": "49120000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 30
+  },
+  {
+   "threshold": "54030000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 28
+  },
+  {
+   "threshold": "58940000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 25
+  },
+  {
+   "threshold": "63860000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 23
+  },
+  {
+   "threshold": "68770000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 20
+  },
+  {
+   "threshold": "73681000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 18
+  },
+  {
+   "threshold": "78590000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 15
+  },
+  {
+   "threshold": "83500000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 13
+  },
+  {
+   "threshold": "88400000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 10
+  },
+  {
+   "threshold": "93330000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 8
+  },
+  {
+   "threshold": "98240000000000",
+   "lp": 20,
+   "protocol": 5,
+   "creator": 5
+  }
+ ]
+}

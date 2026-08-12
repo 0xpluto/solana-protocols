@@ -1,0 +1,268 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/solana/protocols",
+    "crates/solana/protocols-macros",
+    "crates/storage/traits",
+    "crates/storage/cache",
+    "crates/storage/ingest",
+]
+
+[workspace.package]
+version = "0.1.1"
+edition = "2021"
+license = "AGPL-3.0-only"
+authors = ["0xpluto <75406541+0xpluto@users.noreply.github.com>"]
+repository = "https://github.com/0xpluto/solana-protocols"
+
+[workspace.dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+dashmap = "6.0"
+proptest = "1.4"
+rust_decimal = { version = "1.33", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+solana-client = "2.1"
+solana-pubkey = "2"
+solana-sdk = "2.1"
+thiserror = "1.0"
+tokio = { version = "1.35", features = ["full"] }
+tracing = "0.1"
+
+[workspace.lints.rust]
+# Preserves exactly what CI's old blanket `-D warnings` was catching, so
+# dropping that flag loses nothing.
+unused = { level = "deny", priority = -1 }
+dead_code = "deny"                       # §8.5 investigate + delete, never #[allow]
+unused_must_use = "deny"                 # §8.1 no hidden errors
+unreachable_patterns = "deny"
+non_snake_case = "deny"
+# §7.3 public API is a designed artifact — but `missing_docs` is the wrong
+# instrument for it here. It fires 4,866 times across 68 crates, and 3,307 of
+# those are STRUCT FIELDS on wire/DB-row types where the field name already is
+# the documentation (`pub price: Decimal` gains nothing from "/// The price.").
+# A warning that fires 5,000 times teaches everyone to ignore warnings, and it
+# floods rust-analyzer in the editor where the cost is paid continuously.
+#
+# The doc lints that carry CORRECTNESS information are kept and DENIED on the
+# eight money crates instead: `missing_errors_doc` and `missing_panics_doc`
+# tell a caller what can fail and what can panic. That is the doc content worth
+# failing a build over.
+#
+# RATCHET: `crates/core/domain` (the waist, 338 items) is the one crate where
+# full `missing_docs` would earn its keep — it is the shared vocabulary every
+# other crate speaks. Enable it there once documented.
+missing_docs = "allow"
+
+
+[workspace.lints.clippy]
+# --- groups ------------------------------------------------------------------
+# All five are clean today (CI passes with -D warnings), so denying is free and
+# permanently prevents regression. Negative priority lets the individual lints
+# below override them.
+correctness = { level = "deny", priority = -2 }
+suspicious  = { level = "deny", priority = -2 }
+complexity  = { level = "deny", priority = -2 }
+perf        = { level = "deny", priority = -2 }
+style       = { level = "deny", priority = -2 }
+# 3,527 existing warnings. On for visibility; individually promoted below.
+pedantic    = { level = "warn", priority = -1 }
+nursery     = { level = "warn", priority = -1 }
+
+# --- §6.1 units and money: the workspace's #1 bug class -----------------------
+# Every one of these is a silent-corruption channel, not a crash. `as f64`
+# rounding past 2^53 has already cost a day here.
+as_conversions          = "allow"   # 1298 — forces TryFrom over `as`
+cast_possible_truncation = "allow"  # 131
+cast_precision_loss      = "allow"  # 129
+cast_sign_loss           = "allow"  # 104
+cast_possible_wrap       = "allow"  # 26
+float_arithmetic         = "allow"  # 849 — money is Amount/Decimal, never f64
+float_cmp = "allow"  # RATCHET: 58 sites, all in test targets
+integer_division         = "allow"  # 119 — silent truncation
+arithmetic_side_effects  = "allow"  # 1312 — overflow on a money path
+
+# --- §8.1 no hidden errors ---------------------------------------------------
+let_underscore_must_use = "allow"  # RATCHET: 31 sites, each needs a judgement call — see doctrine 9b
+let_underscore_untyped  = "allow"  # style-only; the must_use variant is the bug
+map_err_ignore = "allow"  # we DO discard error context in places where the context is the venue's opaque string
+# §4 panics on a money path. src-only counts are far lower than they look with
+# tests included (unwrap 100, not 1295) — these are close to promotable.
+unwrap_used     = "allow"   # 100
+expect_used     = "allow"   # 176
+panic           = "allow"   # 21
+indexing_slicing = "allow"  # 478
+todo            = "deny"   # clean — unfinished code must not merge
+unimplemented   = "deny"   # clean
+
+# --- §9.1 no wildcards on producer-side enums --------------------------------
+# Deliberately `warn`, not `deny`: the doctrine scopes this to PRODUCERS.
+# Consumers matching a venue-neutral input enum may legitimately wildcard, and
+# clippy cannot tell them apart. Producer crates (solana-protocols, the venue
+# adapters) should promote this to deny in their own [lints] table.
+wildcard_enum_match_arm = "allow"  # doctrine 9.1 scopes this to PRODUCERS; clippy cannot tell a producer match from a consumer one
+match_wildcard_for_single_variants = "allow"  # same as wildcard_enum_match_arm
+
+# --- §1.3 one function, one decision -----------------------------------------
+too_many_lines = "allow"  # RATCHET: tracked via the lib.rs worklist in the doctrine instead
+cognitive_complexity = "allow"  # proxy metric; too_many_lines is the one we act on
+too_many_arguments   = "warn"
+
+# --- §2/§3 latency and runtime -----------------------------------------------
+await_holding_lock         = "deny"  # clean — a lock across .await stalls the runtime
+await_holding_refcell_ref  = "deny"  # clean
+unused_async = "allow"  # RATCHET: 8 sites (doctrine §3)
+redundant_clone = "allow"  # nursery; wrong often enough to distrust
+significant_drop_tightening = "allow"  # nursery; frequent false positives on guards held deliberately
+rc_buffer                  = "deny"  # clean
+mem_forget                 = "deny"  # clean
+disallowed_methods         = "warn"  # 10 — see clippy.toml; promote once fixed
+disallowed_types           = "deny"  # clean
+dbg_macro                  = "deny"  # clean — debugging residue
+
+# --- §7.3 public surface is designed -----------------------------------------
+exhaustive_structs = "allow"  # 938 — public structs need #[non_exhaustive]
+exhaustive_enums   = "allow"  # 302
+missing_errors_doc = "allow"  # 310
+missing_panics_doc = "allow"  # 29
+return_self_not_must_use = "allow"  # builder ceremony
+
+# --- deliberately rejected ---------------------------------------------------
+# Each of these is high-volume and low-signal here. Leaving them at `warn`
+# would bury the actionable warnings above in noise, which is how a team learns
+# to ignore the whole lint output.
+must_use_candidate     = "allow"  # 571 — ceremony on every getter
+doc_markdown           = "allow"  # 426 — backtick nits; see clippy.toml idents
+use_self               = "allow"  # 396 — churn without correctness value
+missing_const_for_fn   = "allow"  # 291 — nursery, const-ness is not our constraint
+too_long_first_doc_paragraph = "allow"  # 119
+needless_raw_string_hashes = "allow"  # 91
+redundant_pub_crate    = "allow"  # 40
+option_if_let_else     = "allow"  # 38 — nursery; frequently less readable
+similar_names          = "allow"  # 26 — false positives on bid/ask, src/dst
+derive_partial_eq_without_eq = "allow"  # 23
+module_name_repetitions = "allow" # naming is a domain choice, not a lint's
+str_to_string          = "allow"  # 421 — .to_string() on &str is fine
+
+# Mechanical pedantic/nursery residue: style opinions with no correctness
+# content. Allowed so that a WARNING MEANS SOMETHING — a build that prints
+# thousands of them teaches everyone to ignore all of them.
+map_unwrap_or = "allow"
+unreadable_literal = "allow"
+redundant_closure_for_method_calls = "allow"
+match_same_arms = "allow"
+items_after_statements = "allow"
+single_match_else = "allow"
+default_trait_access = "allow"
+enum_glob_use = "allow"
+cloned_instead_of_copied = "allow"
+ignored_unit_patterns = "allow"
+unused_self = "allow"
+trivially_copy_pass_by_ref = "allow"
+needless_pass_by_value = "allow"
+unnecessary_literal_bound = "allow"
+bool_to_int_with_if = "allow"
+needless_continue = "allow"
+struct_excessive_bools = "allow"
+doc_link_with_quotes = "allow"
+wildcard_imports = "allow"
+explicit_iter_loop = "allow"
+if_not_else = "allow"
+inline_always = "allow"
+stable_sort_primitive = "allow"
+manual_let_else = "allow"
+range_plus_one = "allow"
+unnested_or_patterns = "allow"
+from_iter_instead_of_collect = "allow"
+used_underscore_binding = "allow"
+cast_ptr_alignment = "allow"
+ref_option = "allow"
+suboptimal_flops = "allow"
+large_stack_arrays = "allow"
+future_not_send = "allow"
+or_fun_call = "allow"
+redundant_else = "allow"
+checked_conversions = "allow"
+copy_iterator = "allow"
+implicit_clone = "allow"
+inefficient_to_string = "allow"
+invalid_upcast_comparisons = "allow"
+iter_not_returning_iterator = "allow"
+large_digit_groups = "allow"
+large_types_passed_by_value = "allow"
+linkedlist = "allow"
+macro_use_imports = "allow"
+maybe_infinite_iter = "allow"
+mut_mut = "allow"
+naive_bytecount = "allow"
+needless_bitwise_bool = "allow"
+no_effect_underscore_binding = "allow"
+non_ascii_literal = "allow"
+path_buf_push_overwrite = "allow"
+ptr_as_ptr = "allow"
+string_add_assign = "allow"
+transmute_ptr_to_ptr = "allow"
+unicode_not_nfc = "allow"
+verbose_bit_mask = "allow"
+zero_sized_map_values = "allow"
+equatable_if_let = "allow"
+fallible_impl_from = "allow"
+imprecise_flops = "allow"
+iter_on_single_items = "allow"
+iter_with_drain = "allow"
+needless_collect = "allow"
+string_lit_as_bytes = "allow"
+trait_duplication_in_bounds = "allow"
+type_repetition_in_bounds = "allow"
+useless_let_if_seq = "allow"
+branches_sharing_code = "allow"
+collection_is_never_read = "allow"
+debug_assert_with_mut_call = "allow"
+empty_line_after_doc_comments = "allow"
+empty_line_after_outer_attr = "allow"
+nonstandard_macro_braces = "allow"
+as_ptr_cast_mut = "allow"
+clear_with_drain = "allow"
+cast_lossless = "allow"  # a widening cast is not a units bug; the narrowing casts are what matter
+uninlined_format_args = "allow"  # pure style
+duration_suboptimal_units = "allow"  # pure style
+fn_params_excessive_bools = "allow"  # one site; the bools are a venue's own API shape
+manual_div_ceil = "allow"  # pure style
+unnecessary_semicolon = "allow"  # pure style
+precedence = "allow"  # explicit parens are clearer than the lint's preference
+comparison_chain = "allow"
+doc_link_code = "allow"
+format_collect = "allow"
+format_push_string = "allow"
+implicit_hasher = "allow"
+manual_assert = "allow"
+manual_assert_eq = "allow"
+manual_string_new = "allow"
+many_single_char_names = "allow"
+missing_fields_in_debug = "allow"
+needless_pass_by_ref_mut = "allow"
+non_std_lazy_statics = "allow"
+pub_underscore_fields = "allow"
+semicolon_if_nothing_returned = "allow"
+significant_drop_in_scrutinee = "allow"
+struct_field_names = "allow"
+suspicious_operation_groupings = "allow"
+trivial_regex = "allow"
+unchecked_time_subtraction = "allow"
+unnecessary_debug_formatting = "allow"
+unnecessary_wraps = "allow"
+assigning_clones = "allow"  # nursery style
+large_futures = "allow"  # boxing a future is a perf trade, not a correctness one
+unnecessary_trailing_comma = "allow"  # style
+while_float = "allow"  # one site, a bounded loop
+single_option_map = "allow"  # style
+single_char_pattern = "allow"  # style
+match_wild_err_arm = "allow"  # RATCHET: 1 site (doctrine §8.1)
+manual_midpoint = "allow"  # style
+ignore_without_reason = "allow"  # #[ignore]d integration tests are documented in their crate READMEs
+
+
+[profile.release]
+lto = true
+codegen-units = 1

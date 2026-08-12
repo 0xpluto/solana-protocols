@@ -1,0 +1,16 @@
+solana-protocols
+Copyright (c) 2026 0xpluto (https://github.com/0xpluto)
+
+This product includes software developed by 0xpluto.
+
+Licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only).
+See the LICENSE file for the full terms.
+
+COMMERCIAL LICENSING
+--------------------
+The AGPL requires that if you run a modified version of this software and let
+users interact with it over a network, you must offer those users the complete
+corresponding source of your version.
+
+If that does not work for your product, commercial licensing is available on
+different terms. Open an issue or contact the copyright holder via GitHub.

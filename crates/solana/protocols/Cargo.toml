@@ -1,0 +1,102 @@
+[package]
+name = "solana-protocols"
+description = "Compiler-driven Solana protocol implementations for trading"
+version.workspace = true
+edition.workspace = true
+authors = ["0xpluto <75406541+0xpluto@users.noreply.github.com>"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/0xpluto/solana-protocols"
+keywords = ["solana", "defi", "amm", "swap", "trading"]
+categories = ["cryptography::cryptocurrencies", "parser-implementations"]
+
+[features]
+default = []
+# Enable IDL verification at build time
+idl-verify = []
+# Enable the per-protocol cache-handler modules (solana-account-traits dep).
+# Consumers that don't use the storage cache (backtest, execution tests)
+# leave this off.
+cache-handlers = ["dep:solana-account-traits"]
+
+[dependencies]
+# Our macros
+solana-protocols-macros = { version = "0.1.1", path = "../protocols-macros" }
+
+# Optional: pulled in when the `cache-handlers` feature is enabled so
+# per-protocol handler modules can implement solana-account-traits::StorageHandler.
+solana-account-traits = { version = "0.1.1", path = "../../storage/traits", optional = true }
+
+# Solana SDK components
+solana-program = "2.2"
+solana-sdk = "2.2"
+# Explicit to enable the `borsh` feature — Pumpfun's Global / FeeConfig
+# layouts use borsh. solana-program re-exports this type, so the impl
+# is available anywhere Pubkey is used.
+solana-pubkey = { workspace = true, features = ["borsh"] }
+spl-token = "7.0"
+spl-token-2022 = "6.0"
+spl-token-metadata-interface = "0.6"
+spl-associated-token-account = "6.0"
+
+# Codama-generated layouts for every Meteora DLMM account, instruction,
+# and type. Default features only — pulls neither anchor-lang nor serde.
+# We depend on this for the layout/discriminator surface; PDAs, math,
+# event-log parsing, ix dispatch, and cache handlers are written here.
+#
+# The published crate has a typo in its `[lib] name = "meteora_vault_sdk"`
+# (auto-generated, copy-paste error from the author's vault SDK). The
+# `package =` rename below gives us the correct module path despite that.
+meteora_dlmm_sdk = { version = "0.1.0", package = "meteora-dlmm-sdk" }
+
+# Fixed-point math used by the DLMM bin-walk quoter. `ruint` provides
+# U256 for overflow-free intermediates; `num-traits` is for the
+# `FromPrimitive` cast helpers.
+ruint = "1.12"
+num-traits = "0.2"
+num-integer = "0.1"
+
+# Pumpfun Global + FeeConfig use borsh on-chain.
+borsh = { version = "1", features = ["derive"] }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+bincode = "1.3"
+
+# Errors
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Log parsing
+once_cell = "1.19"
+regex = "1.10"
+base64 = "0.22"
+
+# Precise decimals for swap math
+rust_decimal = { workspace = true }
+
+# Hashing for IDL verification
+sha2 = "0.10"
+hex = "0.4"
+
+[build-dependencies]
+# Required for IDL verification in build.rs
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+proptest = { workspace = true }
+
+# Test-only access to the SDK's `solana-pubkey 4.x` type so we can
+# construct synthetic SDK accounts in unit tests. Renamed to avoid
+# shadowing the workspace's `solana-pubkey 2.x` in production code —
+# the math layer never names the SDK pubkey type directly, only the
+# tests do.
+sdk_solana_pubkey = { package = "solana-pubkey", version = "4" }
+
+[lints]
+workspace = true

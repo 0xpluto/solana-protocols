@@ -1,0 +1,15 @@
+{
+  "program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "account_type": "TokenAccount",
+  "address": "F8DNaxXEM9i82cGEBsTomPqYWJfeVWyWdg7Vs81fj1CW",
+  "slot": 438422147,
+  "captured_at": "2026-08-09",
+  "size": 165,
+  "note": "PumpSwap quote vault (WSOL) \u2014 reserves live here, not in the Pool account.",
+  "data_b64": "BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAHqrju8fD3+XiM+uC/81dI+XjO2YCdhQeXwZXh87gV19MBpRewEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQEAAADwHR8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "expected": {
+    "mint": "So11111111111111111111111111111111111111112",
+    "owner": "Go6VfFbuciUhinaocqDTZ2aGAgcdKcW9QxiQs1mKtFFy",
+    "amount": 21143841216
+  }
+}

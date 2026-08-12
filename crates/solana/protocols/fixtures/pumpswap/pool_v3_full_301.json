@@ -1,0 +1,23 @@
+{
+  "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+  "account_type": "Pool",
+  "address": "Go6VfFbuciUhinaocqDTZ2aGAgcdKcW9QxiQs1mKtFFy",
+  "slot": 438260708,
+  "captured_at": "2026-08-09",
+  "size": 301,
+  "note": "301-byte PumpSwap Pool variant; fields identical through offset 244, trailing 57 bytes are zero padding.",
+  "data_b64": "8ZptBBGxbbz/AAAZ4qMFD6Eb4Gv/vPe6KvYs9Y4WghlMmDMA4nOFXlW0ZvQDAP0WkcOc0VZ0qvBwx3I0Tqe2gAap36o8hlVIAAy7BpuIV/6rgYT7aH9jRhjANdrEOdwa6ztVmKDwAAAAAAF3Dk+cjScYp+NMadfdc5aF8laNSi4QnP7bqV3RmtCHXqwkqRyKNrO9vhasYyngCKuhhSmDfOUCwm1QaKJTtX030dysAHatn5GwJkL1njBX3KgVQnc/EE6dpFF7LnkzOkvAxmtZ0AMAAF5ZtSuBvzIICeawk+nvV1VtPGEiY02jHxCJTsWSwnhdAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+  "expected": {
+    "bump": 255,
+    "index": 0,
+    "creator": "2k3dcGskw4wU1ciJZfpLkmaCGbSqWwpkK2Wd83ZDcFdF",
+    "base_mint": "HRX8pkZNoGQmSA6eRuQo7vvspKU9MVGWhvpn71UE1B8E",
+    "quote_mint": "So11111111111111111111111111111111111111112",
+    "lp_mint": "91kB26UDhX5mMtFjYEEjfCj5LzeDLnpqxtqEoAd4BFuX",
+    "pool_base_token_account": "CayYiXj8ZEEB9b2ojtrzokDzTmGMwRiVFtKozxUq7Y8v",
+    "pool_quote_token_account": "F8DNaxXEM9i82cGEBsTomPqYWJfeVWyWdg7Vs81fj1CW",
+    "lp_supply": 4193388316352,
+    "coin_creator": "7MJfNPRCXnQyKFaP3bkH5sreZ1FUsTqsGHJD2bgLJQyz",
+    "is_mayhem_mode": false
+  }
+}

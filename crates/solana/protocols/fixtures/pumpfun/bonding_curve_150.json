@@ -1,0 +1,21 @@
+{
+  "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+  "account_type": "BondingCurve",
+  "address": "11dJ5wEKgqydXfMSafmp8rjAHd9sKv1Tkvw2CqGp17",
+  "slot": 438263430,
+  "captured_at": "2026-08-09",
+  "size": 150,
+  "note": "150-byte bonding curve; cross-checked field decode.",
+  "data_b64": "F7f4N2DYrGAAENhH488DAAGsI/wGAAAAAHjF+1HRAgABAAAAAAAAAACAxqR+jQMAAHo/CZyHvW3V0DBkwmqBcjYNVRruGnwLVWLd1BwaVoSPAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "expected": {
+    "virtual_token_reserves": 1073000000000000,
+    "virtual_sol_reserves": 30000000001,
+    "real_token_reserves": 793100000000000,
+    "real_sol_reserves": 1,
+    "token_total_supply": 1000000000000000,
+    "complete": false,
+    "creator": "9ECVQrocrkXwfBiwYHHbRQoT6UKJAgSbvMZmTNC7bA38",
+    "is_mayhem_mode": false,
+    "is_cashback_coin": false
+  }
+}
