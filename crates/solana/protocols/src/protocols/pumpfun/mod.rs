@@ -68,6 +68,9 @@ pub use fee_config::{
     bonding_curve_market_cap, calculate_fee_tier, PumpfunFeeConfig, PumpfunFeeTier, PumpfunFees,
 };
 pub use global::{PumpfunFeeRecipients, PumpfunGlobal};
+pub mod track_volume;
+pub use track_volume::{TrackVolume, UnknownTrackVolume};
+
 pub use instructions::{
     create_ata_idempotent_instruction,
     create_ata_idempotent_instruction_for,
