@@ -112,7 +112,12 @@ fn generate_impl(args: &InstructionDataArgs) -> TokenStream2 {
     let mut deserialize_stmts = Vec::new();
     let mut field_names_for_deser = Vec::new();
     let mut size_calc = quote! { 0 };
-    let mut all_fields_deserializable = true;
+    // Fields whose type this derive cannot decode. Previously the derive
+    // silently emitted NO `from_instruction_data` for such a struct, which is
+    // the house failure: machinery that reads as a finished layer while doing
+    // nothing. A params struct with no parse path looks decorated and is
+    // undecodable, and nothing anywhere says so.
+    let mut undecodable: Vec<String> = Vec::new();
 
     for field in fields.iter() {
         let field_name = field.ident.as_ref().unwrap();
@@ -127,16 +132,37 @@ fn generate_impl(args: &InstructionDataArgs) -> TokenStream2 {
             deserialize_stmts.push(deser);
             field_names_for_deser.push(field_name.clone());
         } else {
-            all_fields_deserializable = false;
+            undecodable.push(format!(
+                "`{field_name}: {}`",
+                quote::ToTokens::to_token_stream(field_ty)
+            ));
         }
     }
 
     // Generate code based on discriminator mode
-    let deser_info = if all_fields_deserializable {
-        Some((&deserialize_stmts, &field_names_for_deser))
-    } else {
-        None
-    };
+    if !undecodable.is_empty() {
+        // Refuse rather than skip. The author's options are to use a type this
+        // derive understands, or to write the impl by hand deliberately — both
+        // fine, and both better than an invisible gap.
+        return syn::Error::new_spanned(
+            name,
+            format!(
+                "InstructionData cannot decode {}: {}. This derive handles only \
+                 fixed-size primitives (integers, bool, Pubkey, [u8; N]); strings, \
+                 vectors and defined types need a hand-written \
+                 `FromInstructionData`. Emitting no decoder silently is how a \
+                 params struct ends up undecodable while looking complete.",
+                if undecodable.len() == 1 {
+                    "a field"
+                } else {
+                    "fields"
+                },
+                undecodable.join(", ")
+            ),
+        )
+        .to_compile_error();
+    }
+    let deser_info = Some((&deserialize_stmts, &field_names_for_deser));
 
     match disc_size {
         0 => generate_no_discriminator_impl(
