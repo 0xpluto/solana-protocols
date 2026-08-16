@@ -36,7 +36,9 @@
 //! uri:                 string
 //! creator:             Pubkey (32 bytes)
 //! is_mayhem_mode:      bool   (1 byte)
-//! is_cashback_enabled: OptionBool (1 byte tag, 0=None, then optional 1 byte value)
+//! is_cashback_enabled: OptionBool — see TrackVolume; the IDL defines it as a
+//!                      struct wrapping a bool (ONE byte), and senders also emit
+//!                      the absent and two-byte forms.
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -120,8 +122,12 @@ pub struct CreateV2Params {
     /// fee recipient + reserved-recipient routing — see
     /// `PumpfunGlobal::reserved_fee_recipients`).
     pub is_mayhem_mode: bool,
-    /// Optional cashback flag. `None` = "use the global default".
-    pub is_cashback_enabled: Option<bool>,
+    /// Cashback flag as it appeared on the wire. See [`TrackVolume`] for why
+    /// this is not an `Option<bool>`: the encoding is inconsistent on chain and
+    /// the form itself is evidence about the sender.
+    ///
+    /// [`TrackVolume`]: crate::protocols::pumpfun::TrackVolume
+    pub is_cashback_enabled: super::super::TrackVolume,
 }
 
 impl CreateV2Params {
@@ -139,7 +145,13 @@ impl FromInstructionData for CreateV2Params {
         let uri = read_borsh_string(data, &mut offset)?;
         let creator = read_pubkey(data, &mut offset)?;
         let is_mayhem_mode = read_bool(data, &mut offset)?;
-        let is_cashback_enabled = read_option_bool(data, &mut offset)?;
+        // `OptionBool` is not borsh's `Option<bool>`. The IDL defines it as a
+        // struct wrapping a bool — one byte — and senders additionally emit the
+        // absent and two-byte forms. Reading it as a tagged option consumed a
+        // value byte that is not there, which is why every live 132-byte
+        // create_v2 failed to parse while the discriminator dispatched fine.
+        let is_cashback_enabled = super::super::TrackVolume::from_bytes(&data[offset..])
+            .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?;
 
         Ok(Self {
             name,
@@ -202,35 +214,6 @@ fn read_bool(data: &[u8], offset: &mut usize) -> Result<bool, InstructionParseEr
 
 /// Anchor `OptionBool` is encoded with a single tag byte (`0` =
 /// `None`, `1` = `Some`) followed by the value byte when `Some`.
-fn read_option_bool(
-    data: &[u8],
-    offset: &mut usize,
-) -> Result<Option<bool>, InstructionParseError> {
-    if *offset + 1 > data.len() {
-        return Err(InstructionParseError::DeserializationFailed(format!(
-            "create_v2: not enough data for OptionBool tag at offset {offset}"
-        )));
-    }
-    let tag = data[*offset];
-    *offset += 1;
-    match tag {
-        0 => Ok(None),
-        1 => {
-            if *offset + 1 > data.len() {
-                return Err(InstructionParseError::DeserializationFailed(format!(
-                    "create_v2: OptionBool=Some but no value byte at offset {offset}"
-                )));
-            }
-            let v = data[*offset] != 0;
-            *offset += 1;
-            Ok(Some(v))
-        }
-        other => Err(InstructionParseError::DeserializationFailed(format!(
-            "create_v2: invalid OptionBool tag {other} at offset {}",
-            *offset - 1
-        ))),
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -262,22 +245,35 @@ mod tests {
         assert_eq!(p.uri, "ipfs://abc");
         assert_eq!(p.creator, pk(0xAA));
         assert!(p.is_mayhem_mode);
-        assert_eq!(p.is_cashback_enabled, Some(false));
+        // `[1, 0]` is the two-byte form. Under borsh Option it reads
+        // Some(false); as the canonical single byte plus a trailing byte it
+        // reads true-then-junk. We record the bytes and decline to resolve it.
+        assert_eq!(
+            p.is_cashback_enabled,
+            crate::protocols::pumpfun::TrackVolume::SomeFalseExtra
+        );
     }
 
     #[test]
-    fn parses_v2_with_optionbool_none() {
+    fn parses_v2_with_canonical_single_byte_optionbool() {
         let mut data = Vec::new();
         encode_string(&mut data, "X");
         encode_string(&mut data, "X");
         encode_string(&mut data, "");
         data.extend_from_slice(pk(0xBB).as_ref());
         data.push(0); // is_mayhem_mode = false
-        data.push(0); // OptionBool tag = None — no trailing byte
+        data.push(0); // canonical OptionBool: a single byte = false
 
         let p = CreateV2Params::from_instruction_data(&data).expect("parse");
         assert!(!p.is_mayhem_mode);
-        assert_eq!(p.is_cashback_enabled, None);
+        // This asserted `None` before 2026-08-12, reading `[0]` as borsh's
+        // Option tag. The IDL defines OptionBool as a struct wrapping a bool,
+        // so a lone `[0]` is canonical FALSE, not absent — and that misreading
+        // is why every live create_v2 failed to parse.
+        assert_eq!(
+            p.is_cashback_enabled,
+            crate::protocols::pumpfun::TrackVolume::SomeFalse
+        );
     }
 
     #[test]

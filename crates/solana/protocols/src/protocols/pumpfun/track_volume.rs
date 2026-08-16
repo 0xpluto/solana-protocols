@@ -29,7 +29,9 @@
 ///
 /// Each variant is exactly one byte string. `None` is the argument being
 /// absent, which is distinct from it being present and false.
-#[derive(Default, PartialEq, Eq, Hash, Debug, Clone, Copy)]
+#[derive(
+    Default, PartialEq, Eq, Hash, Debug, Clone, Copy, serde::Serialize, serde::Deserialize,
+)]
 pub enum TrackVolume {
     /// Argument omitted — serializes to `[]`.
     #[default]
