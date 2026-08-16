@@ -20,11 +20,11 @@ cache-handlers = ["dep:solana-account-traits"]
 
 [dependencies]
 # Our macros
-solana-protocols-macros = { version = "0.1.1", path = "../protocols-macros" }
+solana-protocols-macros = { version = "0.1.2", path = "../protocols-macros" }
 
 # Optional: pulled in when the `cache-handlers` feature is enabled so
 # per-protocol handler modules can implement solana-account-traits::StorageHandler.
-solana-account-traits = { version = "0.1.1", path = "../../storage/traits", optional = true }
+solana-account-traits = { version = "0.1.2", path = "../../storage/traits", optional = true }
 
 # Solana SDK components
 solana-program = "2.2"

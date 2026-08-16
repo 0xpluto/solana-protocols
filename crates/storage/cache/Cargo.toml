@@ -11,8 +11,8 @@ description = "LocalCache — slot-versioned in-memory mirror of on-chain accoun
 
 
 [dependencies]
-solana-account-traits = { version = "0.1.1", path = "../traits" }
-solana-protocols = { version = "0.1.1", path = "../../solana/protocols", features = ["cache-handlers"] }
+solana-account-traits = { version = "0.1.2", path = "../traits" }
+solana-protocols = { version = "0.1.2", path = "../../solana/protocols", features = ["cache-handlers"] }
 dashmap = { workspace = true, features = ["serde"] }
 serde = { workspace = true }
 bincode = "1.3"

@@ -16,7 +16,7 @@ default = []
 rpc = ["dep:solana-client", "dep:solana-sdk"]
 
 [dependencies]
-solana-account-traits = { version = "0.1.1", path = "../traits" }
+solana-account-traits = { version = "0.1.2", path = "../traits" }
 solana-pubkey = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
