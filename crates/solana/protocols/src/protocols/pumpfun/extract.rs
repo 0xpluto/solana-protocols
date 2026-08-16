@@ -14,7 +14,7 @@
 use solana_program::pubkey::Pubkey;
 use tracing::warn;
 
-use super::events::{TradeEvent, TradeFees, TRADE_EVENT_DISCRIMINATOR};
+use super::events::{TradeEvent, TRADE_EVENT_DISCRIMINATOR};
 use super::{
     BuyAccounts, CreateAccounts, CreateParams, CreateV2Accounts, CreateV2Params,
     PumpfunInstruction, SellAccounts, PROGRAM_ID as PUMPFUN_PROGRAM,
@@ -23,7 +23,6 @@ use crate::chain::{
     ChainEvent, CurveState, ExtractContext, ProtocolExtractor, Swap, TokenCreation,
 };
 use crate::parsing::anchor::{event_body, ANCHOR_EVENT_TAG};
-use crate::parsing::state::Legacy;
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::Protocol;
 
@@ -226,10 +225,7 @@ fn extract_swap(
         // protocol + creator lamports it charged. An `Absent` fee block means
         // the event predates those fields, which is the only case that still
         // records zero. Pumpfun charges in SOL regardless of direction.
-        fee_amount: match trade_event.fees {
-            Legacy::Present(f) => f.total(),
-            Legacy::Absent => 0,
-        },
+        fee_amount: trade_event.fee.saturating_add(trade_event.creator_fee),
         fee_mint: crate::tokens::WSOL,
         state_before: None,
         state_after: Some(CurveState::Reserves {
@@ -346,53 +342,18 @@ fn find_trade_event(
     parse_trade_event_body(payload)
 }
 
-/// Parse the 121-byte body of a `TradeEvent` (no discriminator
-/// prefix). Returns `None` on truncated input.
+/// Decode a `TradeEvent` body.
+///
+/// Borsh, against the field list the program's own IDL declares — 32 fields,
+/// where the hand-written predecessor read the first 121 bytes and stopped.
+/// That is why `ix_name`, the executed `track_volume`, the cashback and
+/// buyback splits and the shareholder table were all invisible: they sit past
+/// the offset it gave up at.
 fn parse_trade_event_body(body: &[u8]) -> Option<TradeEvent> {
-    if body.len() < 121 {
-        return None;
-    }
-    let mint = Pubkey::new_from_array(body[0..32].try_into().ok()?);
-    let sol_amount = u64::from_le_bytes(body[32..40].try_into().ok()?);
-    let token_amount = u64::from_le_bytes(body[40..48].try_into().ok()?);
-    let is_buy = body[48] != 0;
-    let user = Pubkey::new_from_array(body[49..81].try_into().ok()?);
-    let timestamp = i64::from_le_bytes(body[81..89].try_into().ok()?);
-    let virtual_sol_reserves = u64::from_le_bytes(body[89..97].try_into().ok()?);
-    let virtual_token_reserves = u64::from_le_bytes(body[97..105].try_into().ok()?);
-    let real_sol_reserves = u64::from_le_bytes(body[105..113].try_into().ok()?);
-    let real_token_reserves = u64::from_le_bytes(body[113..121].try_into().ok()?);
-
-    // Fee block, present since pumpfun grew the event past 121 bytes. It sits
-    // at a fixed offset *before* the variable-length tail (a borsh String and
-    // the volume accumulators), so reading it needs no tail parsing.
-    const FEES_END: usize = TradeFees::OFFSET + TradeFees::LEN;
-    let fees = if body.len() >= FEES_END {
-        Legacy::Present(TradeFees {
-            fee_recipient: Pubkey::new_from_array(body[121..153].try_into().ok()?),
-            fee_basis_points: u64::from_le_bytes(body[153..161].try_into().ok()?),
-            fee: u64::from_le_bytes(body[161..169].try_into().ok()?),
-            creator: Pubkey::new_from_array(body[169..201].try_into().ok()?),
-            creator_fee_basis_points: u64::from_le_bytes(body[201..209].try_into().ok()?),
-            creator_fee: u64::from_le_bytes(body[209..217].try_into().ok()?),
-        })
-    } else {
-        Legacy::Absent
-    };
-
-    Some(TradeEvent {
-        mint,
-        sol_amount,
-        token_amount,
-        is_buy,
-        user,
-        timestamp,
-        virtual_sol_reserves,
-        virtual_token_reserves,
-        real_sol_reserves,
-        real_token_reserves,
-        fees,
-    })
+    use crate::parsing::event::ProtocolEvent;
+    TradeEvent::from_event_body(body)
+        .inspect_err(|e| warn!(len = body.len(), %e, "pumpfun TradeEvent body decode failed"))
+        .ok()
 }
 
 // =============================================================================
@@ -411,21 +372,14 @@ mod tests {
         Pubkey::new_from_array([b; 32])
     }
 
-    /// The 121-byte borsh body, no framing.
+    /// The event body, serialised through borsh.
+    ///
+    /// Was a hand-packed 121-byte layout. Now that the struct IS the layout,
+    /// round-tripping through borsh means a test body cannot disagree with the
+    /// decoder — the failure mode where a test enshrines a stale layout and
+    /// stays green against real data that no longer matches.
     fn trade_event_body(event: &TradeEvent) -> Vec<u8> {
-        let mut data = Vec::with_capacity(121);
-        data.extend_from_slice(event.mint.as_ref());
-        data.extend_from_slice(&event.sol_amount.to_le_bytes());
-        data.extend_from_slice(&event.token_amount.to_le_bytes());
-        data.push(event.is_buy as u8);
-        data.extend_from_slice(event.user.as_ref());
-        data.extend_from_slice(&event.timestamp.to_le_bytes());
-        data.extend_from_slice(&event.virtual_sol_reserves.to_le_bytes());
-        data.extend_from_slice(&event.virtual_token_reserves.to_le_bytes());
-        data.extend_from_slice(&event.real_sol_reserves.to_le_bytes());
-        data.extend_from_slice(&event.real_token_reserves.to_le_bytes());
-        debug_assert_eq!(data.len(), 121);
-        data
+        borsh::to_vec(event).expect("TradeEvent serialises")
     }
 
     /// Modern `emit_cpi!` framing: `[tag || event disc || body]`.
@@ -460,7 +414,7 @@ mod tests {
             virtual_token_reserves: 967_000_000_000_000,
             real_sol_reserves: 1_000_000_000,
             real_token_reserves: 767_000_000_000_000,
-            fees: Legacy::Absent,
+            ..Default::default()
         }
     }
 
@@ -618,7 +572,9 @@ mod tests {
         // Same program, same tag, same body length — everything a
         // tag-only match would accept.
         let inner_data = emit_cpi_framed(&foreign_disc, &trade_event_body(&event));
-        assert_eq!(inner_data.len(), 16 + 121);
+        // Length is whatever borsh produces for the full IDL layout; the
+        // point is only that it is a plausible body, not a magic number.
+        assert!(inner_data.len() > 16);
 
         let mut outer = buy_instruction(&event, vec![0u8; 16]);
         outer.logs.clear(); // no legacy log — the self-CPI path is the only one
@@ -814,19 +770,21 @@ mod tests {
 mod trade_event_fixture {
     use super::*;
 
-    /// The fee block decodes off a real mainnet `TradeEvent`.
+    /// A real mainnet `TradeEvent` decodes through borsh against the field
+    /// list the IDL declares.
     ///
-    /// Pumpfun's event grew past the 121-byte layout this parser used to stop
-    /// at, so every pumpfun swap recorded `fee_amount = 0` while the chain was
-    /// publishing the exact lamports in bytes we already had in hand.
+    /// The predecessor read the first 121 bytes by hand and stopped, so nine
+    /// fields past that offset were invisible — including `ix_name`, which
+    /// names the instruction that produced the event, and the executed
+    /// `track_volume`, which is a different fact from the flag the caller
+    /// requested.
     ///
-    /// Two independent cross-checks ride along, which is what makes this a
-    /// measurement rather than a transcription: the published rates must equal
-    /// the two rate constants derived elsewhere in this crate, and each fee
-    /// must equal its rate applied to `sol_amount` — rounded **up**, the same
-    /// ceiling the PumpSwap fee grading established.
+    /// Two cross-checks ride along so this is a measurement rather than a
+    /// transcription: the published rates must equal the two rate constants
+    /// derived elsewhere in this crate, and each fee must equal its rate on
+    /// the SOL leg rounded UP.
     #[test]
-    fn the_fee_block_decodes_off_a_real_trade_event() {
+    fn a_real_trade_event_decodes_through_borsh() {
         #[derive(serde::Deserialize)]
         struct Fixture {
             body_b64: String,
@@ -839,38 +797,42 @@ mod trade_event_fixture {
             .expect("body is base64");
 
         let ev = parse_trade_event_body(&body).expect("real body must decode");
-        let Legacy::Present(fees) = ev.fees else {
-            panic!("a 350-byte body carries the fee block");
-        };
         let want = &fx.expected;
-
         assert_eq!(ev.sol_amount, want["sol_amount"].as_u64().unwrap());
-        assert_eq!(fees.fee, want["fee"].as_u64().unwrap());
-        assert_eq!(fees.creator_fee, want["creator_fee"].as_u64().unwrap());
-        assert_eq!(fees.fee_recipient.to_string(), want["fee_recipient"]);
-        assert_eq!(fees.creator.to_string(), want["creator"]);
+        assert_eq!(ev.fee, want["fee"].as_u64().unwrap());
+        assert_eq!(ev.creator_fee, want["creator_fee"].as_u64().unwrap());
+        assert_eq!(ev.fee_recipient.to_string(), want["fee_recipient"]);
+        assert_eq!(ev.creator.to_string(), want["creator"]);
 
-        // Cross-check 1: the chain's rates are the rates this crate declares.
         use super::super::constants::{CREATOR_FEE_BPS, PROTOCOL_FEE_BPS};
-        assert_eq!(fees.fee_basis_points, PROTOCOL_FEE_BPS);
-        assert_eq!(fees.creator_fee_basis_points, CREATOR_FEE_BPS);
-
-        // Cross-check 2: each fee is its rate on the SOL leg, rounded up.
+        assert_eq!(ev.fee_basis_points, PROTOCOL_FEE_BPS);
+        assert_eq!(ev.creator_fee_basis_points, CREATOR_FEE_BPS);
         let ceil = |amt: u64, bps: u64| (u128::from(amt) * u128::from(bps)).div_ceil(10_000) as u64;
-        assert_eq!(fees.fee, ceil(ev.sol_amount, fees.fee_basis_points));
+        assert_eq!(ev.fee, ceil(ev.sol_amount, ev.fee_basis_points));
         assert_eq!(
-            fees.creator_fee,
-            ceil(ev.sol_amount, fees.creator_fee_basis_points)
+            ev.creator_fee,
+            ceil(ev.sol_amount, ev.creator_fee_basis_points)
         );
 
-        assert_eq!(fees.total(), fees.fee + fees.creator_fee);
+        // Past the old 121-byte cutoff: the event names its own instruction.
+        assert!(!ev.ix_name.is_empty(), "ix_name was invisible before borsh");
     }
 
-    /// A pre-fee 121-byte body reports `Absent`, never a fabricated zero fee.
+    /// Strict on trailing bytes. An event body is written by the program, so
+    /// surplus bytes mean our layout is wrong, not that a sender appended junk.
     #[test]
-    fn a_legacy_body_reports_absent_rather_than_a_zero_fee() {
-        let ev = parse_trade_event_body(&[0u8; 121]).expect("121 bytes still decode");
-        assert_eq!(ev.fees, Legacy::Absent);
+    fn a_body_with_trailing_bytes_is_refused() {
+        let fx: serde_json::Value =
+            serde_json::from_str(include_str!("../../../fixtures/pumpfun/trade_event.json"))
+                .unwrap();
+        let mut body = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            fx["body_b64"].as_str().unwrap(),
+        )
+        .unwrap();
+        assert!(parse_trade_event_body(&body).is_some());
+        body.push(0);
+        assert!(parse_trade_event_body(&body).is_none());
     }
 }
 
@@ -883,18 +845,15 @@ mod v2_identity {
     use crate::protocols::pumpfun::SELL_V2_DISCRIMINATOR;
 
     fn event_body_for(mint: Pubkey, user: Pubkey) -> Vec<u8> {
-        let mut b = Vec::with_capacity(121);
-        b.extend_from_slice(mint.as_ref());
-        b.extend_from_slice(&1_000u64.to_le_bytes()); // sol_amount
-        b.extend_from_slice(&2_000u64.to_le_bytes()); // token_amount
-        b.push(0); // is_buy = false (sell)
-        b.extend_from_slice(user.as_ref());
-        b.extend_from_slice(&1_780_000_000i64.to_le_bytes()); // timestamp
-        for v in [10_u64, 20, 30, 40] {
-            b.extend_from_slice(&v.to_le_bytes());
-        }
-        assert_eq!(b.len(), 121);
-        b
+        borsh::to_vec(&TradeEvent {
+            mint,
+            user,
+            sol_amount: 1_000,
+            token_amount: 2_000,
+            timestamp: 1_780_000_000,
+            ..Default::default()
+        })
+        .expect("serialises")
     }
 
     fn v2_sell(accounts: Vec<Pubkey>, mint: Pubkey, user: Pubkey) -> Vec<ParsedInstruction> {

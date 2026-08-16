@@ -2,8 +2,6 @@
 
 use solana_program::pubkey::Pubkey;
 
-use crate::parsing::state::Legacy;
-
 /// `TradeEvent`'s own discriminator — `sha256("event:TradeEvent")[..8]`,
 /// derived at compile time.
 ///
@@ -28,73 +26,86 @@ pub const TRADE_EVENT_DISCRIMINATOR: [u8; 8] =
 /// A `#[derive(LogParser)]` used to sit here generating a *second* one that
 /// nothing called — and being field-derived, it stopped at the pre-fee 121-byte
 /// layout, so the dead parser was also the wrong one.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, borsh::BorshDeserialize, borsh::BorshSerialize)]
 pub struct TradeEvent {
-    /// Token mint address.
+    /// `mint` — declared by the program IDL.
     pub mint: Pubkey,
-    /// SOL amount in lamports.
+    /// `sol_amount` — declared by the program IDL.
     pub sol_amount: u64,
-    /// Token amount in smallest units.
+    /// `token_amount` — declared by the program IDL.
     pub token_amount: u64,
-    /// Whether this is a buy (true) or sell (false).
+    /// `is_buy` — declared by the program IDL.
     pub is_buy: bool,
-    /// User who made the trade.
+    /// `user` — declared by the program IDL.
     pub user: Pubkey,
-    /// Unix timestamp of the trade.
+    /// `timestamp` — declared by the program IDL.
     pub timestamp: i64,
-    /// Virtual SOL reserves after trade.
+    /// `virtual_sol_reserves` — declared by the program IDL.
     pub virtual_sol_reserves: u64,
-    /// Virtual token reserves after trade.
+    /// `virtual_token_reserves` — declared by the program IDL.
     pub virtual_token_reserves: u64,
-    /// Real SOL reserves after trade.
+    /// `real_sol_reserves` — declared by the program IDL.
     pub real_sol_reserves: u64,
-    /// Real token reserves after trade.
+    /// `real_token_reserves` — declared by the program IDL.
     pub real_token_reserves: u64,
-    /// Fees the chain charged for this trade, when the event carries them.
-    ///
-    /// [`Absent`](Legacy::Absent) means the event predates the fee fields
-    /// (a 121-byte body), never "no fee was charged" — a trade with a real
-    /// fee of zero is `Present` with zeroes in it.
-    pub fees: Legacy<TradeFees>,
-}
-
-/// The fee split the chain published with a trade, in lamports.
-///
-/// Read straight off the event rather than recomputed. Pumpfun's rates are
-/// tiered on market cap, so a local recomputation is a model of the chain's
-/// answer where the event *is* the chain's answer; the sampled rates land on
-/// [`PROTOCOL_FEE_BPS`] and [`CREATOR_FEE_BPS`] exactly, and the lamport
-/// amounts round *up* — the same ceiling the PumpSwap fee grading found.
-///
-/// [`PROTOCOL_FEE_BPS`]: super::super::constants::PROTOCOL_FEE_BPS
-/// [`CREATOR_FEE_BPS`]: super::super::constants::CREATOR_FEE_BPS
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TradeFees {
-    /// Which of the configured recipients this trade paid.
+    /// `fee_recipient` — declared by the program IDL.
     pub fee_recipient: Pubkey,
-    /// Protocol fee rate in basis points.
+    /// `fee_basis_points` — declared by the program IDL.
     pub fee_basis_points: u64,
-    /// Protocol fee actually charged, in lamports.
+    /// `fee` — declared by the program IDL.
     pub fee: u64,
-    /// The coin creator (all-zero when the coin has none).
+    /// `creator` — declared by the program IDL.
     pub creator: Pubkey,
-    /// Creator fee rate in basis points.
+    /// `creator_fee_basis_points` — declared by the program IDL.
     pub creator_fee_basis_points: u64,
-    /// Creator fee actually charged, in lamports.
+    /// `creator_fee` — declared by the program IDL.
     pub creator_fee: u64,
+    /// `track_volume` — declared by the program IDL.
+    pub track_volume: bool,
+    /// `total_unclaimed_tokens` — declared by the program IDL.
+    pub total_unclaimed_tokens: u64,
+    /// `total_claimed_tokens` — declared by the program IDL.
+    pub total_claimed_tokens: u64,
+    /// `current_sol_volume` — declared by the program IDL.
+    pub current_sol_volume: u64,
+    /// `last_update_timestamp` — declared by the program IDL.
+    pub last_update_timestamp: i64,
+    /// `ix_name` — declared by the program IDL.
+    pub ix_name: String,
+    /// `mayhem_mode` — declared by the program IDL.
+    pub mayhem_mode: bool,
+    /// `cashback_fee_basis_points` — declared by the program IDL.
+    pub cashback_fee_basis_points: u64,
+    /// `cashback` — declared by the program IDL.
+    pub cashback: u64,
+    /// `buyback_fee_basis_points` — declared by the program IDL.
+    pub buyback_fee_basis_points: u64,
+    /// `buyback_fee` — declared by the program IDL.
+    pub buyback_fee: u64,
+    /// `shareholders` — declared by the program IDL.
+    pub shareholders: Vec<Shareholder>,
+    /// `quote_mint` — declared by the program IDL.
+    pub quote_mint: Pubkey,
+    /// `quote_amount` — declared by the program IDL.
+    pub quote_amount: u64,
+    /// `virtual_quote_reserves` — declared by the program IDL.
+    pub virtual_quote_reserves: u64,
+    /// `real_quote_reserves` — declared by the program IDL.
+    pub real_quote_reserves: u64,
 }
 
-impl TradeFees {
-    /// Byte offset of the fee block within the event body.
-    pub(crate) const OFFSET: usize = 121;
-    /// Byte length of the fee block.
-    pub(crate) const LEN: usize = 32 + 8 + 8 + 32 + 8 + 8;
+/// A creator-fee shareholder, as the IDL declares it.
+#[derive(Debug, Clone, PartialEq, Eq, borsh::BorshDeserialize, borsh::BorshSerialize)]
+pub struct Shareholder {
+    /// Wallet receiving a share.
+    pub address: Pubkey,
+    /// Share in basis points.
+    pub share_bps: u16,
+}
 
-    /// Total lamports the trade paid in fees.
-    #[must_use]
-    pub const fn total(&self) -> u64 {
-        self.fee.saturating_add(self.creator_fee)
-    }
+impl crate::parsing::event::ProtocolEvent for TradeEvent {
+    const DISCRIMINATOR: [u8; 8] = TRADE_EVENT_DISCRIMINATOR;
+    const NAME: &'static str = "TradeEvent";
 }
 
 impl TradeEvent {
@@ -191,7 +202,7 @@ mod tests {
             virtual_token_reserves: 900_000_000_000_000,
             real_sol_reserves: 1_000_000_000,
             real_token_reserves: 700_000_000_000_000,
-            fees: Legacy::Absent,
+            ..Default::default()
         };
 
         assert!(event.is_buy);
@@ -219,7 +230,7 @@ mod tests {
             virtual_token_reserves: 0,
             real_sol_reserves: 42_500_000_000, // 42.5 SOL = 50%
             real_token_reserves: 0,
-            fees: Legacy::Absent,
+            ..Default::default()
         };
 
         assert!((event.graduation_progress() - 0.5).abs() < 0.01);

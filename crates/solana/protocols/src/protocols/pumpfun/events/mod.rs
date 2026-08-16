@@ -22,4 +22,4 @@
 
 mod trade;
 
-pub use trade::{TradeEvent, TradeFees, TRADE_EVENT_DISCRIMINATOR};
+pub use trade::{Shareholder, TradeEvent, TRADE_EVENT_DISCRIMINATOR};
