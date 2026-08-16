@@ -138,6 +138,10 @@ pub struct BuyParams {
     pub base_amount_out: u64,
     /// Maximum quote (SOL) to spend.
     pub max_quote_amount_in: u64,
+    /// Trailing `OptionBool` the IDL declares. Carried, not dropped: the flag
+    /// changes which accounts the program expects, and a builder that omits it
+    /// can emit an instruction whose accounts contradict its own arguments.
+    pub track_volume: crate::protocols::OptionBool,
 }
 
 /// PumpSwap `buy_exact_quote_in` parameters.
@@ -152,6 +156,8 @@ pub struct BuyExactQuoteInParams {
     pub spendable_quote_in: u64,
     /// Minimum base tokens to accept.
     pub min_base_amount_out: u64,
+    /// Trailing `OptionBool` — see [`BuyParams::track_volume`].
+    pub track_volume: crate::protocols::OptionBool,
 }
 
 /// `buy_exact_quote_in` uses the same accounts as `buy`.
@@ -164,7 +170,20 @@ impl BuyParams {
         Self {
             base_amount_out,
             max_quote_amount_in,
+            // Absent serialises to nothing, so what we emit is unchanged from
+            // before this field existed. Opt in deliberately.
+            track_volume: crate::protocols::OptionBool::None,
         }
+    }
+
+    /// Set the trailing `OptionBool`.
+    ///
+    /// Separate from [`new`](Self::new) because it is not a free parameter: it
+    /// changes the account list the program requires.
+    #[must_use]
+    pub fn with_track_volume(mut self, track_volume: crate::protocols::OptionBool) -> Self {
+        self.track_volume = track_volume;
+        self
     }
 
     /// Create buy parameters from swap output with slippage.
@@ -181,6 +200,7 @@ impl BuyParams {
         BuyParams {
             base_amount_out: min_tokens,
             max_quote_amount_in: max_sol,
+            track_volume: crate::protocols::OptionBool::None,
         }
     }
 }

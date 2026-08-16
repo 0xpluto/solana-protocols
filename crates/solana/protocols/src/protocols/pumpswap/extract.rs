@@ -76,9 +76,12 @@ impl ProtocolExtractor for PumpSwapExtractor {
             // is preserved on the row via `Swap.instruction`, because the
             // rounding direction differs and the quote math must not be
             // graded across the two together.
-            PumpSwapInstruction::Buy(_) | PumpSwapInstruction::BuyExactQuoteIn(_) => {
-                extract_buy(ix, all_instructions)
+            PumpSwapInstruction::Buy(ref p) => extract_buy(ix, all_instructions, p.track_volume),
+            PumpSwapInstruction::BuyExactQuoteIn(ref p) => {
+                extract_buy(ix, all_instructions, p.track_volume)
             }
+            // `sell` declares no such argument, so absent is the truth here
+            // rather than a default.
             PumpSwapInstruction::Sell(_) => extract_sell(ix, all_instructions),
             PumpSwapInstruction::CreatePool(_) => extract_create_pool(ix),
             // Deposit / Withdraw don't produce trade events we model.
@@ -87,7 +90,11 @@ impl ProtocolExtractor for PumpSwapExtractor {
     }
 }
 
-fn extract_buy(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<ChainEvent> {
+fn extract_buy(
+    ix: &ParsedInstruction,
+    all: &[ParsedInstruction],
+    track_volume: crate::protocols::OptionBool,
+) -> Option<ChainEvent> {
     let accounts = match BuyAccounts::from_account_keys(&ix.accounts) {
         Ok(a) => a,
         Err(e) => {
@@ -118,8 +125,7 @@ fn extract_buy(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<Chai
     let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee.unwrap_or(0);
 
     Some(ChainEvent::Swap(Swap {
-        // No such argument on this protocol.
-        track_volume: crate::protocols::OptionBool::None,
+        track_volume,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::PumpSwap,
         pool: accounts.pool,

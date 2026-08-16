@@ -295,6 +295,7 @@ mod tests {
         let ix = PumpSwapInstruction::BuyExactQuoteIn(BuyExactQuoteInParams {
             spendable_quote_in: 500_000_000,
             min_base_amount_out: 1_000_000,
+            track_volume: crate::protocols::OptionBool::None,
         });
         let swap = ix.as_swap().expect("should classify as swap");
         assert!(matches!(swap.amount_in, SwapAmount::Exact(500_000_000)));

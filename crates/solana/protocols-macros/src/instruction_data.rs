@@ -119,15 +119,51 @@ fn generate_impl(args: &InstructionDataArgs) -> TokenStream2 {
     // undecodable, and nothing anywhere says so.
     let mut undecodable: Vec<String> = Vec::new();
 
-    for field in fields.iter() {
+    for (idx, field) in fields.iter().enumerate() {
         let field_name = field.ident.as_ref().unwrap();
         let field_ty = &field.ty;
+
+        // Try to generate deserialization for this field
+        // A trailing `OptionBool` consumes whatever remains, including nothing.
+        // It is the pump family's optional-argument convention and appears on
+        // five instructions across two programs, so the derive knows it rather
+        // than each struct hand-rolling the same three lines.
+        //
+        // Required to be LAST, and that is a guarantee rather than a
+        // convention: it eats the rest of the buffer, so any field after it
+        // could never be read. The compiler enforces the ordering instead of a
+        // reviewer noticing.
+        let is_option_bool = quote::ToTokens::to_token_stream(field_ty)
+            .to_string()
+            .replace(' ', "")
+            .ends_with("OptionBool");
+        if is_option_bool {
+            if idx + 1 != fields.len() {
+                return syn::Error::new_spanned(
+                    field_ty,
+                    "a trailing OptionBool must be the final field: it consumes the \
+                     remainder of the instruction data, so any field after it is \
+                     unreachable",
+                )
+                .to_compile_error();
+            }
+            deserialize_stmts.push(quote! {
+                let #field_name = ::solana_protocols::protocols::OptionBool::from_bytes(&data[offset..])
+                    .map_err(|e| crate::parsing::InstructionParseError::DeserializationFailed(
+                        e.to_string()
+                    ))?;
+            });
+            field_names_for_deser.push(field_name.clone());
+            serialize_stmts.push(quote! {
+                data.extend_from_slice(self.#field_name.to_bytes());
+            });
+            continue;
+        }
 
         let (serialize, size) = generate_field_serialize(field_name, field_ty);
         serialize_stmts.push(serialize);
         size_calc = quote! { #size_calc + #size };
 
-        // Try to generate deserialization for this field
         if let Some((deser, _deser_size)) = generate_field_deserialize(field_name, field_ty) {
             deserialize_stmts.push(deser);
             field_names_for_deser.push(field_name.clone());
