@@ -31,7 +31,7 @@
 //! count the rest.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use solana_program::pubkey::Pubkey;
@@ -53,9 +53,35 @@ pub struct UndecodedSample {
 }
 
 static TOTAL: AtomicU64 = AtomicU64::new(0);
+static CAPTURE: AtomicBool = AtomicBool::new(false);
 
-/// Keyed by `(program, discriminator)` — the identity of an instruction shape.
-type ShapeKey = (Pubkey, Vec<u8>);
+/// Turn body retention on. Off by default: a decoder library should not hold
+/// samples of every unknown instruction it sees unless someone asked it to.
+pub fn enable_capture() {
+    CAPTURE.store(true, Ordering::Relaxed);
+}
+
+/// Whether bodies are being retained.
+#[must_use]
+pub fn capture_enabled() -> bool {
+    CAPTURE.load(Ordering::Relaxed)
+}
+
+/// Keyed by `(program, discriminator, data_len, account_count)`.
+///
+/// The discriminator alone is not the shape. One instruction legitimately
+/// appears in several forms — an optional trailing argument, optional trailing
+/// accounts — and those variants are the interesting part: they are what a
+/// decoder has to handle and what an incomplete IDL hides. Keying on the
+/// discriminator alone keeps the first form seen and discards every other,
+/// which is how a 24-byte and a 25-byte `buy_exact_quote_in_v2` would have
+/// looked like one thing.
+///
+/// Widening the key keeps each distinct form once, and only once: repeats of a
+/// form still increment a counter rather than accumulating samples, so a
+/// firehose run yields a handful of shapes, not thousands of near-identical
+/// bodies.
+type ShapeKey = (Pubkey, Vec<u8>, usize, usize);
 type SampleMap = Mutex<HashMap<ShapeKey, UndecodedSample>>;
 
 fn samples() -> &'static SampleMap {
@@ -69,9 +95,15 @@ fn samples() -> &'static SampleMap {
 /// a failure — it is the rest of Solana — and recording it would bury the
 /// signal this exists to surface.
 pub fn report(program: &Pubkey, data: &[u8], accounts: &[Pubkey], reason: &str) {
+    // The tally is always cheap and always on — "how much are we missing" must
+    // not depend on a flag. Retaining bodies is what costs memory, so that is
+    // the part behind the switch.
     TOTAL.fetch_add(1, Ordering::Relaxed);
+    if !capture_enabled() {
+        return;
+    }
     let disc = data.iter().take(8).copied().collect::<Vec<u8>>();
-    let key = (*program, disc.clone());
+    let key = (*program, disc.clone(), data.len(), accounts.len());
 
     let Ok(mut map) = samples().lock() else {
         return; // a poisoned mutex must not take down the firehose
@@ -127,6 +159,7 @@ mod tests {
 
     #[test]
     fn the_first_sample_is_kept_and_repeats_are_counted() {
+        enable_capture();
         let program = Pubkey::new_unique();
         let a = vec![Pubkey::new_unique()];
         report(&program, &[9, 9, 9, 9, 9, 9, 9, 9, 42], &a, "test");
@@ -144,8 +177,55 @@ mod tests {
         assert!(total() >= 2);
     }
 
+    /// The same instruction in two shapes is two samples, because the variants
+    /// are the point: an optional trailing argument or account is exactly what
+    /// a decoder must handle and what an incomplete IDL hides.
+    #[test]
+    fn one_instruction_in_two_shapes_is_two_samples() {
+        enable_capture();
+        let program = Pubkey::new_unique();
+        let disc = [4u8; 8];
+        let one = vec![Pubkey::new_unique()];
+        let two = vec![Pubkey::new_unique(), Pubkey::new_unique()];
+
+        report(&program, &disc, &one, "a"); // 8 bytes, 1 account
+        report(&program, &disc, &one, "a"); // repeat: counted, not stored
+        let mut longer = disc.to_vec();
+        longer.push(1);
+        report(&program, &longer, &one, "b"); // 9 bytes, 1 account
+        report(&program, &disc, &two, "c"); // 8 bytes, 2 accounts
+
+        let mine: Vec<_> = report_all()
+            .into_iter()
+            .filter(|s| s.program == program)
+            .collect();
+        assert_eq!(mine.len(), 3, "three distinct shapes, one entry each");
+        assert_eq!(
+            mine.iter().map(|s| s.seen).sum::<u64>(),
+            4,
+            "the repeat is counted, not discarded"
+        );
+    }
+
+    /// With capture off the tally still moves — "how much are we missing" must
+    /// not depend on a flag — but no bodies are held.
+    #[test]
+    fn the_tally_works_with_capture_disabled() {
+        CAPTURE.store(false, Ordering::Relaxed);
+        let program = Pubkey::new_unique();
+        let before = total();
+        report(&program, &[8u8; 8], &[], "off");
+        assert!(total() > before, "tally is unconditional");
+        assert!(
+            !report_all().iter().any(|s| s.program == program),
+            "no body retained while capture is off"
+        );
+        enable_capture();
+    }
+
     #[test]
     fn different_discriminators_are_separate_samples() {
+        enable_capture();
         let program = Pubkey::new_unique();
         report(&program, &[1; 8], &[], "a");
         report(&program, &[2; 8], &[], "b");
@@ -159,6 +239,7 @@ mod tests {
     /// truncated instruction is exactly the kind of thing worth seeing.
     #[test]
     fn a_short_instruction_is_still_retained() {
+        enable_capture();
         let program = Pubkey::new_unique();
         report(&program, &[7], &[], "short");
         let s = report_all()
@@ -226,6 +307,7 @@ mod dump_tests {
 
     #[test]
     fn samples_land_as_fixtures_and_are_not_overwritten() {
+        enable_capture();
         let dir = std::env::temp_dir().join(format!("undec_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let program = Pubkey::new_unique();
