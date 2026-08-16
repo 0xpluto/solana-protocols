@@ -125,6 +125,7 @@ pub mod swap_instruction;
 pub mod token_handler;
 pub mod tokens;
 pub mod traits;
+pub mod undecoded;
 
 /// Golden on-chain fixture harness for decoder verification (test-only).
 #[cfg(test)]

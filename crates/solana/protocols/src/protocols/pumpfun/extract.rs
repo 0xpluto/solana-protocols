@@ -12,7 +12,7 @@
 //! generalise.
 
 use solana_program::pubkey::Pubkey;
-use tracing::{trace, warn};
+use tracing::warn;
 
 use super::events::{TradeEvent, TradeFees, TRADE_EVENT_DISCRIMINATOR};
 use super::{
@@ -64,7 +64,11 @@ impl ProtocolExtractor for PumpfunExtractor {
         let pumpfun_ix = match PumpfunInstruction::try_from_slice(&ix.data) {
             Ok(v) => v,
             Err(e) => {
-                trace!(error = ?e, "pumpfun instruction not recognised, skipping");
+                // Not "skipping" — this is an instruction on a program we CLAIM
+                // to decode, so failing to parse it is a gap in us, not a
+                // non-event. Retained with its bytes so the parser can be
+                // fixed later; this branch used to `trace!` and vanish.
+                crate::undecoded::report(&ix.program_id, &ix.data, &ix.accounts, &format!("{e:?}"));
                 return None;
             }
         };

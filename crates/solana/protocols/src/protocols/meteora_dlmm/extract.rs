@@ -19,7 +19,7 @@
 //! instructions.
 
 use solana_program::pubkey::Pubkey;
-use tracing::{trace, warn};
+use tracing::warn;
 
 use crate::chain::{ChainEvent, CurveState, ExtractContext, ProtocolExtractor, Swap};
 use crate::parsing::ParsedInstruction;
@@ -61,7 +61,11 @@ impl ProtocolExtractor for MeteoraDlmmExtractor {
         let parsed = match parse_instruction(ix) {
             Ok(v) => v,
             Err(e) => {
-                trace!(?e, "dlmm instruction not recognised, skipping");
+                // Not "skipping" — this is an instruction on a program we CLAIM
+                // to decode, so failing to parse it is a gap in us, not a
+                // non-event. Retained with its bytes so the parser can be
+                // fixed later; this branch used to `trace!` and vanish.
+                crate::undecoded::report(&ix.program_id, &ix.data, &ix.accounts, &format!("{e:?}"));
                 return None;
             }
         };
