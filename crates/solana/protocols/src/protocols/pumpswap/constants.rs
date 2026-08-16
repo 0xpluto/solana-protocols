@@ -61,6 +61,10 @@ pub const SELL_DISCRIMINATOR: [u8; 8] =
 pub const WITHDRAW_DISCRIMINATOR: [u8; 8] =
     solana_protocols_macros::anchor_instruction_discriminator!("withdraw");
 
+/// `collect_coin_creator_fee` — the coin creator withdrawing accrued AMM fees.
+pub const COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("collect_coin_creator_fee");
+
 /// `deposit` instruction discriminator — `sha256("global:deposit")[..8]`, derived.
 pub const DEPOSIT_DISCRIMINATOR: [u8; 8] =
     solana_protocols_macros::anchor_instruction_discriminator!("deposit");

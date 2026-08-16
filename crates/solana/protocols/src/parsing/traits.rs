@@ -131,3 +131,48 @@ mod tests {
         assert!(!TestLog::matches_discriminator(&[1, 2, 3, 4])); // Too short
     }
 }
+
+/// Arguments for an instruction that declares none.
+///
+/// Not `()`: a unit type has no natural [`FromInstructionData`] impl, and the
+/// one thing this needs to do is *refuse* a non-empty body. Trailing bytes on a
+/// zero-argument instruction mean the program grew an argument we have not
+/// noticed, which is exactly the change that should announce itself rather than
+/// being skipped over.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NoParams;
+
+impl NoParams {
+    /// The argument encoding: empty, because there are no arguments.
+    ///
+    /// Present so a zero-argument variant satisfies the same
+    /// encode/decode surface as its siblings; the discriminator its caller
+    /// prepends is the whole instruction.
+    #[must_use]
+    pub fn to_data(&self) -> Vec<u8> {
+        Vec::new()
+    }
+}
+
+impl FromInstructionData for NoParams {
+    fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError> {
+        if data.is_empty() {
+            return Ok(Self);
+        }
+        Err(InstructionParseError::DeserializationFailed(format!(
+            "instruction declares no arguments, got {} bytes",
+            data.len()
+        )))
+    }
+}
+
+#[cfg(test)]
+mod no_params_tests {
+    use super::*;
+
+    #[test]
+    fn no_arguments_means_no_bytes() {
+        assert!(NoParams::from_instruction_data(&[]).is_ok());
+        assert!(NoParams::from_instruction_data(&[0]).is_err());
+    }
+}

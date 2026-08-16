@@ -14,15 +14,19 @@
 use solana_program::pubkey::Pubkey;
 use tracing::warn;
 
-use super::events::{TradeEvent, TRADE_EVENT_DISCRIMINATOR};
+use super::events::{
+    CollectCreatorFeeEvent, DistributeCreatorFeesEvent, TradeEvent, TRADE_EVENT_DISCRIMINATOR,
+};
 use super::{
     BuyAccounts, CreateAccounts, CreateParams, CreateV2Accounts, CreateV2Params,
     PumpfunInstruction, SellAccounts, PROGRAM_ID as PUMPFUN_PROGRAM,
 };
 use crate::chain::{
-    ChainEvent, CurveState, ExtractContext, ProtocolExtractor, Swap, TokenCreation,
+    ChainEvent, CreatorFee, CreatorPayout, CurveState, ExtractContext, ProtocolExtractor, Swap,
+    TokenCreation,
 };
 use crate::parsing::anchor::{event_body, ANCHOR_EVENT_TAG};
+use crate::parsing::event::find_child_event;
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::Protocol;
 
@@ -83,6 +87,14 @@ impl ProtocolExtractor for PumpfunExtractor {
             | PumpfunInstruction::SellV2(_) => extract_swap(ix, &pumpfun_ix, all_instructions),
             PumpfunInstruction::Create(params) => extract_create(ix, &params),
             PumpfunInstruction::CreateV2(params) => extract_create_v2(ix, &params),
+            PumpfunInstruction::CollectCreatorFee(_)
+            | PumpfunInstruction::CollectCreatorFeeV2(_) => {
+                extract_collect_creator_fee(ix, all_instructions)
+            }
+            PumpfunInstruction::DistributeCreatorFees(_)
+            | PumpfunInstruction::DistributeCreatorFeesV2(_) => {
+                extract_distribute_creator_fees(ix, all_instructions)
+            }
         }
     }
 }
@@ -158,7 +170,12 @@ fn extract_swap(
             };
             (accounts.mint, accounts.bonding_curve, accounts.user)
         }
-        PumpfunInstruction::Create(_) | PumpfunInstruction::CreateV2(_) => return None,
+        PumpfunInstruction::Create(_)
+        | PumpfunInstruction::CreateV2(_)
+        | PumpfunInstruction::CollectCreatorFee(_)
+        | PumpfunInstruction::CollectCreatorFeeV2(_)
+        | PumpfunInstruction::DistributeCreatorFees(_)
+        | PumpfunInstruction::DistributeCreatorFeesV2(_) => return None,
     };
 
     let trade_event = find_trade_event(ix, all_instructions)?;
@@ -211,7 +228,11 @@ fn extract_swap(
             PumpfunInstruction::Sell(_)
             | PumpfunInstruction::SellV2(_)
             | PumpfunInstruction::Create(_)
-            | PumpfunInstruction::CreateV2(_) => crate::protocols::OptionBool::None,
+            | PumpfunInstruction::CreateV2(_)
+            | PumpfunInstruction::CollectCreatorFee(_)
+            | PumpfunInstruction::CollectCreatorFeeV2(_)
+            | PumpfunInstruction::DistributeCreatorFees(_)
+            | PumpfunInstruction::DistributeCreatorFeesV2(_) => crate::protocols::OptionBool::None,
         },
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::Pumpfun,
@@ -313,6 +334,72 @@ fn extract_create_v2(ix: &ParsedInstruction, params: &CreateV2Params) -> Option<
 /// transactions found 9 event self-CPIs (all TradeEvent) and a second,
 /// distinct discriminator in the same `Program data:` channel — so the
 /// `[8..16]` check is what keeps a sibling event out of the swap tape.
+/// A creator withdrawing their accrued fees.
+///
+/// Everything recorded comes from the event, not the instruction: the
+/// instruction takes no arguments, and mainnet sends it with more accounts than
+/// the IDL declares, so slot-reading it would be guessing. No event means no
+/// row — a withdrawal whose amount we cannot read is not worth a fabricated
+/// zero.
+fn extract_collect_creator_fee(
+    ix: &ParsedInstruction,
+    all_instructions: &[ParsedInstruction],
+) -> Option<ChainEvent> {
+    let ev: CollectCreatorFeeEvent = find_child_event(ix, all_instructions, &PUMPFUN_PROGRAM)
+        .or_else(|| {
+            warn!(
+                ix_index = ix.instruction_index,
+                "pumpfun collect_creator_fee: no CollectCreatorFeeEvent on any child"
+            );
+            None
+        })?;
+
+    Some(ChainEvent::CreatorFee(CreatorFee {
+        protocol: Protocol::Pumpfun,
+        payout: CreatorPayout::Direct {
+            creator: ev.creator,
+        },
+        amount: ev.creator_fee,
+        quote_mint: ev.quote_mint,
+        // The vault accrues across every token this creator launched, so the
+        // chain genuinely does not attribute this to one mint.
+        mint: None,
+        timestamp: ev.timestamp,
+    }))
+}
+
+/// Accrued fees split across a sharing config.
+///
+/// Unlike a collect this one *is* attributable — the event names the mint and
+/// the bonding curve whose trading earned the fees.
+fn extract_distribute_creator_fees(
+    ix: &ParsedInstruction,
+    all_instructions: &[ParsedInstruction],
+) -> Option<ChainEvent> {
+    let ev: DistributeCreatorFeesEvent = find_child_event(ix, all_instructions, &PUMPFUN_PROGRAM)
+        .or_else(|| {
+        warn!(
+            ix_index = ix.instruction_index,
+            "pumpfun distribute_creator_fees: no DistributeCreatorFeesEvent on any child"
+        );
+        None
+    })?;
+
+    Some(ChainEvent::CreatorFee(CreatorFee {
+        protocol: Protocol::Pumpfun,
+        payout: CreatorPayout::Shared {
+            bonding_curve: ev.bonding_curve,
+            sharing_config: ev.sharing_config,
+            admin: ev.admin,
+            shareholders: ev.shareholders,
+        },
+        amount: ev.distributed,
+        quote_mint: ev.quote_mint,
+        mint: Some(ev.mint),
+        timestamp: ev.timestamp,
+    }))
+}
+
 fn find_trade_event(
     ix: &ParsedInstruction,
     all_instructions: &[ParsedInstruction],

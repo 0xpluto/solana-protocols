@@ -31,6 +31,9 @@
 //! event bodies do not get that latitude.
 
 use borsh::BorshDeserialize;
+use solana_program::pubkey::Pubkey;
+
+use super::instruction::ParsedInstruction;
 
 use crate::parsing::anchor::event_body;
 use crate::parsing::InstructionParseError;
@@ -75,6 +78,44 @@ pub trait ProtocolEvent: BorshDeserialize + Sized {
             None => Ok(None),
         }
     }
+}
+
+/// Find an `emit_cpi!` event a given instruction produced.
+///
+/// Anchor emits events as a self-CPI, so the payload is on a *child*
+/// instruction of the one that caused it, never on the instruction itself. The
+/// walk is restricted to direct children of `parent` owned by `program`: a
+/// sibling's event is not ours, and a grandchild belongs to whichever child
+/// invoked it.
+///
+/// A body that carries our discriminator but fails to decode is a defect in our
+/// layout, not a foreign event, so it is logged and the walk continues rather
+/// than returning early — the next child could still be the real one, and a
+/// silent `None` would report "no event" for what is actually "we cannot read
+/// our own event".
+///
+/// This depends on log attribution only through `parent_index`, which comes
+/// from the instruction list, not the log stream.
+pub fn find_child_event<E: ProtocolEvent>(
+    parent: &ParsedInstruction,
+    all_instructions: &[ParsedInstruction],
+    program: &Pubkey,
+) -> Option<E> {
+    all_instructions
+        .iter()
+        .filter(|c| c.parent_index == Some(parent.instruction_index) && c.program_id == *program)
+        .find_map(|c| match E::from_event_instruction(&c.data) {
+            Ok(found) => found,
+            Err(e) => {
+                tracing::warn!(
+                    event = E::NAME,
+                    ix_index = c.instruction_index,
+                    %e,
+                    "event carried our discriminator but did not decode"
+                );
+                None
+            }
+        })
 }
 
 #[cfg(test)]

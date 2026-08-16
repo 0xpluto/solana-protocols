@@ -2,6 +2,8 @@
 
 use solana_program::pubkey::Pubkey;
 
+pub use crate::protocols::Shareholder;
+
 /// `TradeEvent`'s own discriminator — `sha256("event:TradeEvent")[..8]`,
 /// derived at compile time.
 ///
@@ -92,15 +94,6 @@ pub struct TradeEvent {
     pub virtual_quote_reserves: u64,
     /// `real_quote_reserves` — declared by the program IDL.
     pub real_quote_reserves: u64,
-}
-
-/// A creator-fee shareholder, as the IDL declares it.
-#[derive(Debug, Clone, PartialEq, Eq, borsh::BorshDeserialize, borsh::BorshSerialize)]
-pub struct Shareholder {
-    /// Wallet receiving a share.
-    pub address: Pubkey,
-    /// Share in basis points.
-    pub share_bps: u16,
 }
 
 impl crate::parsing::event::ProtocolEvent for TradeEvent {

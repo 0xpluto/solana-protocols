@@ -85,6 +85,22 @@ pub const CREATE_V2_DISCRIMINATOR: [u8; 8] =
 
 /// Bonding curve account discriminator — `sha256("account:BondingCurve")[..8]`,
 /// derived at compile time (was hand-typed `[0x17, 0xb7, …]`; identical bytes).
+/// `collect_creator_fee` — a creator draining their accrued fee vault.
+pub const COLLECT_CREATOR_FEE_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("collect_creator_fee");
+
+/// `collect_creator_fee_v2` — the same, settling into a token account.
+pub const COLLECT_CREATOR_FEE_V2_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("collect_creator_fee_v2");
+
+/// `distribute_creator_fees` — a vault split across a sharing config.
+pub const DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("distribute_creator_fees");
+
+/// `distribute_creator_fees_v2` — the same, able to create the recipient ATA.
+pub const DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("distribute_creator_fees_v2");
+
 pub const BONDING_CURVE_DISCRIMINATOR: [u8; 8] =
     solana_protocols_macros::anchor_account_discriminator!("BondingCurve");
 

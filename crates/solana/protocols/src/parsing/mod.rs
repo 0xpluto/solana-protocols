@@ -66,7 +66,9 @@ pub use registry::{
     ProtocolEvent, ProtocolParser, ProtocolRegistry, SwapEvent, TokenCreationEvent,
 };
 pub use source::{SourceError, TokenBalanceChange, TransactionMeta, TransactionSource};
-pub use traits::{FromAccountKeys, FromInstructionData, FromLogData, VerifiedInstruction};
+pub use traits::{
+    FromAccountKeys, FromInstructionData, FromLogData, NoParams, VerifiedInstruction,
+};
 
 // Layer 2: Classification
 pub use classify::{

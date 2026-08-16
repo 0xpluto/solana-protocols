@@ -12,7 +12,24 @@
 //! transfer reconciliation required.
 
 mod buy;
+mod collect_coin_creator_fee;
 mod sell;
 
 pub use buy::{BuyEvent, BUY_EVENT_DISCRIMINATOR};
 pub use sell::{SellEvent, SELL_EVENT_DISCRIMINATOR};
+
+pub use collect_coin_creator_fee::{
+    CollectCoinCreatorFeeEvent, COLLECT_COIN_CREATOR_FEE_EVENT_DISCRIMINATOR,
+};
+
+/// Every event this module decodes; see pumpfun's `DECODED_EVENTS` for why the
+/// names come from the impls.
+///
+/// `BuyEvent` and `SellEvent` are string literals because they are still
+/// hand-counted byte offsets and do not implement `ProtocolEvent`. That
+/// asymmetry is the reminder: converting them is the outstanding work here.
+pub const DECODED_EVENTS: &[&str] = &[
+    "BuyEvent",
+    "SellEvent",
+    <CollectCoinCreatorFeeEvent as crate::parsing::event::ProtocolEvent>::NAME,
+];

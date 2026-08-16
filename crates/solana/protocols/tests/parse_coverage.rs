@@ -244,7 +244,7 @@ fn parse_coverage() {
             "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
             &|d| PumpfunInstruction::try_from_slice(d).is_ok(),
             &["BondingCurve", "Global", "FeeConfig"],
-            &["TradeEvent"],
+            solana_protocols::pumpfun::events::DECODED_EVENTS,
         ),
         measure(
             "pumpswap",
@@ -252,7 +252,7 @@ fn parse_coverage() {
             "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
             &|d| PumpSwapInstruction::try_from_slice(d).is_ok(),
             &["Pool"],
-            &["BuyEvent", "SellEvent"],
+            solana_protocols::pumpswap::events::DECODED_EVENTS,
         ),
         measure(
             "meteora_dbc",

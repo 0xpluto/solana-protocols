@@ -41,6 +41,7 @@ mod buy;
 mod common;
 mod create;
 mod create_v2;
+mod creator_fee;
 mod sell;
 
 pub use buy::{BuyAccounts, BuyBuilder, BuyExactInParams, BuyParams};
@@ -50,12 +51,15 @@ pub use common::{
 };
 pub use create::{CreateAccounts, CreateParams};
 pub use create_v2::{CreateV2Accounts, CreateV2Params};
+pub use creator_fee::{CreatorFeeParams, DistributeCreatorFeesV2Params};
 pub use sell::{SellAccounts, SellBuilder, SellParams};
 
 use super::constants::{
     BUY_DISCRIMINATOR, BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR, BUY_EXACT_SOL_IN_DISCRIMINATOR,
-    BUY_V2_DISCRIMINATOR, CREATE_DISCRIMINATOR, CREATE_V2_DISCRIMINATOR, PROGRAM_ID,
-    SELL_DISCRIMINATOR, SELL_V2_DISCRIMINATOR,
+    BUY_V2_DISCRIMINATOR, COLLECT_CREATOR_FEE_DISCRIMINATOR, COLLECT_CREATOR_FEE_V2_DISCRIMINATOR,
+    CREATE_DISCRIMINATOR, CREATE_V2_DISCRIMINATOR, DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR,
+    DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR, PROGRAM_ID, SELL_DISCRIMINATOR,
+    SELL_V2_DISCRIMINATOR,
 };
 use crate::parsing::{FromAccountKeys, FromInstructionData, InstructionParseError};
 
@@ -87,6 +91,15 @@ pub enum PumpfunInstruction {
     /// (16 slots vs 14, `user` at slot 5 not 7) and richer params
     /// (explicit `creator: Pubkey` arg + mayhem/cashback flags).
     CreateV2(CreateV2Params),
+    /// `collect_creator_fee` — a creator draining their fee vault.
+    CollectCreatorFee(CreatorFeeParams),
+    /// `collect_creator_fee_v2` — the same, settling into a token account.
+    CollectCreatorFeeV2(CreatorFeeParams),
+    /// `distribute_creator_fees` — a vault split across a sharing config.
+    DistributeCreatorFees(CreatorFeeParams),
+    /// `distribute_creator_fees_v2` — the same, able to create the recipient
+    /// token account on the way.
+    DistributeCreatorFeesV2(DistributeCreatorFeesV2Params),
 }
 
 impl PumpfunInstruction {
@@ -133,6 +146,22 @@ impl PumpfunInstruction {
         } else if discriminator == CREATE_DISCRIMINATOR {
             let params = CreateParams::from_instruction_data(params_data)?;
             Ok(PumpfunInstruction::Create(params))
+        } else if discriminator == COLLECT_CREATOR_FEE_DISCRIMINATOR {
+            Ok(PumpfunInstruction::CollectCreatorFee(
+                CreatorFeeParams::from_instruction_data(params_data)?,
+            ))
+        } else if discriminator == COLLECT_CREATOR_FEE_V2_DISCRIMINATOR {
+            Ok(PumpfunInstruction::CollectCreatorFeeV2(
+                CreatorFeeParams::from_instruction_data(params_data)?,
+            ))
+        } else if discriminator == DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR {
+            Ok(PumpfunInstruction::DistributeCreatorFees(
+                CreatorFeeParams::from_instruction_data(params_data)?,
+            ))
+        } else if discriminator == DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR {
+            Ok(PumpfunInstruction::DistributeCreatorFeesV2(
+                DistributeCreatorFeesV2Params::from_instruction_data(params_data)?,
+            ))
         } else if discriminator == CREATE_V2_DISCRIMINATOR {
             let params = CreateV2Params::from_instruction_data(params_data)?;
             Ok(PumpfunInstruction::CreateV2(params))
@@ -153,6 +182,12 @@ impl PumpfunInstruction {
             PumpfunInstruction::SellV2(_) => SELL_V2_DISCRIMINATOR,
             PumpfunInstruction::Create(_) => CREATE_DISCRIMINATOR,
             PumpfunInstruction::CreateV2(_) => CREATE_V2_DISCRIMINATOR,
+            PumpfunInstruction::CollectCreatorFee(_) => COLLECT_CREATOR_FEE_DISCRIMINATOR,
+            PumpfunInstruction::CollectCreatorFeeV2(_) => COLLECT_CREATOR_FEE_V2_DISCRIMINATOR,
+            PumpfunInstruction::DistributeCreatorFees(_) => DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR,
+            PumpfunInstruction::DistributeCreatorFeesV2(_) => {
+                DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR
+            }
         }
     }
 
@@ -185,6 +220,20 @@ impl PumpfunInstruction {
                 // be re-emitting v2 instructions via this path.
                 CREATE_V2_DISCRIMINATOR.to_vec()
             }
+            // Zero-argument instructions: the discriminator *is* the whole
+            // encoding, so these are complete rather than truncated.
+            PumpfunInstruction::CollectCreatorFee(_) => COLLECT_CREATOR_FEE_DISCRIMINATOR.to_vec(),
+            PumpfunInstruction::CollectCreatorFeeV2(_) => {
+                COLLECT_CREATOR_FEE_V2_DISCRIMINATOR.to_vec()
+            }
+            PumpfunInstruction::DistributeCreatorFees(_) => {
+                DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR.to_vec()
+            }
+            PumpfunInstruction::DistributeCreatorFeesV2(params) => {
+                let mut data = DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR.to_vec();
+                data.push(u8::from(params.initialize_ata));
+                data
+            }
         }
     }
 
@@ -206,6 +255,17 @@ impl PumpfunInstruction {
             | PumpfunInstruction::SellV2(_) => Err(InstructionParseError::DeserializationFailed(
                 "pumpfun v2 account layout not captured".to_string(),
             )),
+            // Deliberately not captured: mainnet sends these with more accounts
+            // than the IDL declares, so a fixed-slot struct would decode the
+            // wrong pubkeys. Their event names its own participants.
+            PumpfunInstruction::CollectCreatorFee(_)
+            | PumpfunInstruction::CollectCreatorFeeV2(_)
+            | PumpfunInstruction::DistributeCreatorFees(_)
+            | PumpfunInstruction::DistributeCreatorFeesV2(_) => {
+                Err(InstructionParseError::DeserializationFailed(
+                    "pumpfun creator-fee instructions are identified, not slot-decoded".to_string(),
+                ))
+            }
             PumpfunInstruction::Sell(_) => {
                 let accounts = SellAccounts::from_account_keys(account_keys)?;
                 Ok(PumpfunInstructionAccounts::Sell(accounts))

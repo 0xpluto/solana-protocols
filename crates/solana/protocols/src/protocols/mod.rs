@@ -34,7 +34,9 @@
 //! - `InstructionBuilder` - Build Solana instructions
 
 pub mod option_bool;
+mod shareholder;
 pub use option_bool::{OptionBool, Trailer, UnknownOptionBool};
+pub use shareholder::Shareholder;
 
 pub mod pumpfun;
 pub mod pumpswap;

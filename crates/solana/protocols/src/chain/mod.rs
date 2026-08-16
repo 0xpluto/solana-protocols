@@ -18,6 +18,6 @@ pub use extract::{
     ProtocolExtractor, TransactionHeader,
 };
 pub use types::{
-    ChainEvent, CurveState, Migration, ParsedTransaction, Swap, TokenBalanceChange,
-    TokenBalanceEntry, TokenCreation, TxError, TxOutcome,
+    ChainEvent, CreatorFee, CreatorPayout, CurveState, Migration, ParsedTransaction, Swap,
+    TokenBalanceChange, TokenBalanceEntry, TokenCreation, TxError, TxOutcome,
 };

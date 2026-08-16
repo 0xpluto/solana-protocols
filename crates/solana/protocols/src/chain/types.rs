@@ -89,7 +89,9 @@ impl ParsedTransaction {
     pub fn swaps(&self) -> impl Iterator<Item = &Swap> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::Swap(s) => Some(s),
-            ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) => None,
+            ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) => {
+                None
+            }
         })
     }
 
@@ -97,7 +99,7 @@ impl ParsedTransaction {
     pub fn token_creations(&self) -> impl Iterator<Item = &TokenCreation> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::TokenCreation(c) => Some(c),
-            ChainEvent::Swap(_) | ChainEvent::Migration(_) => None,
+            ChainEvent::Swap(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) => None,
         })
     }
 
@@ -105,7 +107,15 @@ impl ParsedTransaction {
     pub fn migrations(&self) -> impl Iterator<Item = &Migration> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::Migration(m) => Some(m),
-            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) => None,
+            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::CreatorFee(_) => None,
+        })
+    }
+
+    /// Iterate just the [`CreatorFee`] events.
+    pub fn creator_fees(&self) -> impl Iterator<Item = &CreatorFee> {
+        self.events.iter().filter_map(|e| match e {
+            ChainEvent::CreatorFee(c) => Some(c),
+            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) => None,
         })
     }
 
@@ -294,6 +304,7 @@ pub enum ChainEvent {
     Swap(Swap),
     TokenCreation(TokenCreation),
     Migration(Migration),
+    CreatorFee(CreatorFee),
 }
 
 impl ChainEvent {
@@ -302,8 +313,66 @@ impl ChainEvent {
             ChainEvent::Swap(s) => s.protocol,
             ChainEvent::TokenCreation(c) => c.protocol,
             ChainEvent::Migration(m) => m.from_protocol,
+            ChainEvent::CreatorFee(c) => c.protocol,
         }
     }
+}
+
+/// Creator fees leaving the protocol and reaching whoever is owed them.
+///
+/// Pump charges a per-trade fee on the creator's behalf and accrues it in a
+/// vault; this is the withdrawal. It is a distinct economic fact from a swap —
+/// nobody trades, the amount is a claim on fees already earned, and the
+/// counterparty is the protocol.
+///
+/// Both pumpfun and pumpswap emit it, in the same shape, which is why it lives
+/// here rather than in either protocol.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CreatorFee {
+    /// Which program paid out.
+    pub protocol: Protocol,
+    /// Who was paid, and whether the amount was split.
+    pub payout: CreatorPayout,
+    /// Total moved, in `quote_mint` base units.
+    pub amount: u64,
+    /// Denomination. Pump accrues creator fees in the pool's quote asset, so
+    /// this is usually — but not necessarily — wrapped SOL.
+    pub quote_mint: Pubkey,
+    /// The token whose trading earned the fees.
+    ///
+    /// `None` on a plain collect, and honestly so: that instruction drains a
+    /// creator's vault, which accrues across every token they launched. Only
+    /// the distribute path names a mint. Defaulting this to the system program
+    /// would invent an attribution the chain never made.
+    pub mint: Option<Pubkey>,
+    /// Timestamp the program stamped on its own event.
+    pub timestamp: i64,
+}
+
+/// Where a creator-fee payout went.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum CreatorPayout {
+    /// The whole amount to one wallet.
+    Direct {
+        /// The creator being paid.
+        creator: Pubkey,
+    },
+    /// Split across a sharing config's shareholders.
+    ///
+    /// The shares are what the config declared at distribution time. Their
+    /// basis points are carried rather than resolved to amounts: rounding is
+    /// the program's to do, and computing per-shareholder amounts here would
+    /// be our arithmetic wearing the chain's authority.
+    Shared {
+        /// The bonding curve whose fees these are.
+        bonding_curve: Pubkey,
+        /// Config that defines the split.
+        sharing_config: Pubkey,
+        /// Authority that triggered the distribution.
+        admin: Pubkey,
+        /// Recipients and their basis points.
+        shareholders: Vec<crate::protocols::Shareholder>,
+    },
 }
 
 /// A token swap — the dominant event shape. Drives price updates,

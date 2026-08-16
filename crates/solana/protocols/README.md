@@ -82,11 +82,11 @@ denominator that cannot be chosen to flatter the answer.
 <!-- BEGIN:COVERAGE -->
 | protocol | instructions | accounts | events | overall |
 |---|---:|---:|---:|---|
-| pumpfun | 8/40 | 3/6 | 1/23 | `██░░░░░░░░` 17.4% |
-| pumpswap | 6/25 | 1/7 | 2/22 | `██░░░░░░░░` 16.7% |
+| pumpfun | 12/40 | 3/6 | 3/23 | `███░░░░░░░` 26.1% |
+| pumpswap | 7/25 | 1/7 | 3/22 | `██░░░░░░░░` 20.4% |
 | meteora_dbc | 2/28 | 0/8 | 0/23 | `░░░░░░░░░░` 3.4% |
 | raydium_clmm | 2/25 | 0/9 | 0/11 | `░░░░░░░░░░` 4.4% |
-| **total** | | | | **25/227 = 11.0%** |
+| **total** | | | | **33/227 = 14.5%** |
 <!-- END:COVERAGE -->
 
 These numbers are **generated** by `tests/parse_coverage.rs` and a test fails

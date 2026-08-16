@@ -27,12 +27,19 @@
 use solana_program::pubkey::Pubkey;
 use tracing::warn;
 
-use super::events::{BuyEvent, SellEvent, BUY_EVENT_DISCRIMINATOR, SELL_EVENT_DISCRIMINATOR};
-use super::{
-    BuyAccounts, CreatePoolAccounts, PumpSwapInstruction, SellAccounts,
-    PROGRAM_ID as PUMPSWAP_PROGRAM,
+use super::events::{
+    BuyEvent, CollectCoinCreatorFeeEvent, SellEvent, BUY_EVENT_DISCRIMINATOR,
+    SELL_EVENT_DISCRIMINATOR,
 };
-use crate::chain::{ChainEvent, CurveState, ExtractContext, Migration, ProtocolExtractor, Swap};
+use super::{
+    BuyAccounts, CollectCoinCreatorFeeAccounts, CreatePoolAccounts, PumpSwapInstruction,
+    SellAccounts, PROGRAM_ID as PUMPSWAP_PROGRAM,
+};
+use crate::chain::{
+    ChainEvent, CreatorFee, CreatorPayout, CurveState, ExtractContext, Migration,
+    ProtocolExtractor, Swap,
+};
+use crate::parsing::event::find_child_event;
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::meteora_damm_v2::constants::ANCHOR_EVENT_DISCRIMINATOR;
 use crate::protocols::Protocol;
@@ -86,6 +93,9 @@ impl ProtocolExtractor for PumpSwapExtractor {
             PumpSwapInstruction::CreatePool(_) => extract_create_pool(ix),
             // Deposit / Withdraw don't produce trade events we model.
             PumpSwapInstruction::Deposit(_) | PumpSwapInstruction::Withdraw(_) => None,
+            PumpSwapInstruction::CollectCoinCreatorFee(_) => {
+                extract_collect_coin_creator_fee(ix, all_instructions)
+            }
         }
     }
 }
@@ -196,6 +206,61 @@ fn extract_sell(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<Cha
             in_side: event.pool_base_token_reserves,
             out_side: event.pool_quote_token_reserves,
         }),
+    }))
+}
+
+/// The coin creator withdrawing fees the AMM accrued for them.
+///
+/// Normalises to the same [`CreatorFee`] pumpfun produces: the two programs
+/// name the fact differently ("creator" vs "coin creator") but it is one
+/// economic event, and a consumer asking "when did this creator get paid"
+/// should not have to ask it twice.
+///
+/// The event carries the amount; the instruction carries none. Without the
+/// event there is no row, because a withdrawal of an unknown size is not a
+/// measurement.
+fn extract_collect_coin_creator_fee(
+    ix: &ParsedInstruction,
+    all_instructions: &[ParsedInstruction],
+) -> Option<ChainEvent> {
+    let ev: CollectCoinCreatorFeeEvent = find_child_event(ix, all_instructions, &PUMPSWAP_PROGRAM)
+        .or_else(|| {
+            warn!(
+                ix_index = ix.instruction_index,
+                "pumpswap collect_coin_creator_fee: no CollectCoinCreatorFeeEvent on any child"
+            );
+            None
+        })?;
+
+    // The event names the accounts but not the mint, so read the denomination
+    // off the instruction's own `quote_mint` slot. PumpSwap sends exactly the
+    // eight accounts its IDL declares here, unlike pumpfun's creator-fee
+    // instructions, so the slot is safe.
+    let accounts = match CollectCoinCreatorFeeAccounts::from_account_keys(&ix.accounts) {
+        Ok(a) => a,
+        Err(e) => {
+            warn!(
+                ?e,
+                ix_index = ix.instruction_index,
+                "pumpswap collect_coin_creator_fee: account parse failed"
+            );
+            return None;
+        }
+    };
+
+    Some(ChainEvent::CreatorFee(CreatorFee {
+        protocol: Protocol::PumpSwap,
+        payout: CreatorPayout::Direct {
+            creator: ev.coin_creator,
+        },
+        amount: ev.coin_creator_fee,
+        quote_mint: accounts.quote_mint,
+        // A pool's creator vault accrues from that pool alone, but the
+        // instruction does not name the pool or its base mint — only the vault.
+        // Recovering the mint would mean a lookup we have not verified, and a
+        // guess here would be an attribution the chain never made.
+        mint: None,
+        timestamp: ev.timestamp,
     }))
 }
 

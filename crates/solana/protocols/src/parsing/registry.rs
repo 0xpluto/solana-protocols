@@ -1017,6 +1017,12 @@ fn pumpfun_parse(
         | PumpfunInstruction::SellV2(_) => Ok(None),
         PumpfunInstruction::Create(params) => pumpfun_parse_create(instruction, params),
         PumpfunInstruction::CreateV2(params) => pumpfun_parse_create_v2(instruction, params),
+        // This legacy registry only speaks swap/creation. Creator-fee movements
+        // travel the `chain::extract` path, which is the live one.
+        PumpfunInstruction::CollectCreatorFee(_)
+        | PumpfunInstruction::CollectCreatorFeeV2(_)
+        | PumpfunInstruction::DistributeCreatorFees(_)
+        | PumpfunInstruction::DistributeCreatorFeesV2(_) => Ok(None),
     }
 }
 
@@ -1257,6 +1263,9 @@ fn pumpswap_parse(
                 .with_lp_amount(params.lp_amount_in),
             )))
         }
+        // Fee withdrawals are not swaps; the live `chain::extract` path turns
+        // them into `ChainEvent::CreatorFee`.
+        PumpSwapInstruction::CollectCoinCreatorFee(_) => Ok(None),
     }
 }
 

@@ -4,12 +4,14 @@
 //! The `ProtocolInstruction` derive macro generates dispatch, accounts enum, and event struct.
 
 pub mod buy;
+mod collect_coin_creator_fee;
 pub mod create_pool;
 pub mod deposit;
 pub mod sell;
 pub mod withdraw;
 
 pub use buy::{BuyAccounts, BuyBuilder, BuyExactQuoteInAccounts, BuyExactQuoteInParams, BuyParams};
+pub use collect_coin_creator_fee::CollectCoinCreatorFeeAccounts;
 pub use create_pool::{CreatePoolAccounts, CreatePoolParams};
 pub use deposit::{DepositAccounts, DepositParams};
 pub use sell::{SellAccounts, SellBuilder, SellParams};
@@ -18,8 +20,9 @@ pub use withdraw::{WithdrawAccounts, WithdrawParams};
 use solana_protocols_macros::ProtocolInstruction;
 
 use super::constants::{
-    BUY_DISCRIMINATOR, BUY_EXACT_QUOTE_IN_DISCRIMINATOR, CREATE_POOL_DISCRIMINATOR,
-    DEPOSIT_DISCRIMINATOR, PROGRAM_ID, SELL_DISCRIMINATOR, WITHDRAW_DISCRIMINATOR,
+    BUY_DISCRIMINATOR, BUY_EXACT_QUOTE_IN_DISCRIMINATOR, COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR,
+    CREATE_POOL_DISCRIMINATOR, DEPOSIT_DISCRIMINATOR, PROGRAM_ID, SELL_DISCRIMINATOR,
+    WITHDRAW_DISCRIMINATOR,
 };
 use crate::parsing::{ClassifiesAsSwap, SwapAmount, SwapClassification};
 use crate::traits::SwapDirection;
@@ -54,6 +57,12 @@ pub enum PumpSwapInstruction {
     /// Remove liquidity from a pool.
     #[instruction(discriminator = WITHDRAW_DISCRIMINATOR, accounts = WithdrawAccounts)]
     Withdraw(WithdrawParams),
+    /// The coin creator withdrawing fees the AMM accrued for them.
+    #[instruction(
+        discriminator = COLLECT_COIN_CREATOR_FEE_DISCRIMINATOR,
+        accounts = CollectCoinCreatorFeeAccounts
+    )]
+    CollectCoinCreatorFee(crate::parsing::NoParams),
 }
 
 impl PumpSwapInstruction {
@@ -110,9 +119,12 @@ impl ClassifiesAsSwap for PumpSwapInstruction {
                 SwapAmount::Exact(params.base_amount_in),
                 SwapAmount::Minimum(params.min_quote_amount_out),
             )),
+            // A fee withdrawal is not a swap either: nobody trades, and the
+            // amount is a claim on fees already earned.
             PumpSwapInstruction::CreatePool(_)
             | PumpSwapInstruction::Deposit(_)
-            | PumpSwapInstruction::Withdraw(_) => None,
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => None,
         }
     }
 }
@@ -183,7 +195,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::CreatePool(_)
             | PumpSwapInstruction::Deposit(_)
-            | PumpSwapInstruction::Withdraw(_) => panic!("expected Buy"),
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Buy"),
         }
     }
 
@@ -202,7 +215,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::CreatePool(_)
             | PumpSwapInstruction::Deposit(_)
-            | PumpSwapInstruction::Withdraw(_) => panic!("expected Sell"),
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Sell"),
         }
     }
 
@@ -222,7 +236,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::Sell(_)
             | PumpSwapInstruction::Deposit(_)
-            | PumpSwapInstruction::Withdraw(_) => panic!("expected CreatePool"),
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected CreatePool"),
         }
     }
 
@@ -242,7 +257,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::Sell(_)
             | PumpSwapInstruction::CreatePool(_)
-            | PumpSwapInstruction::Withdraw(_) => panic!("expected Deposit"),
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Deposit"),
         }
     }
 
@@ -262,7 +278,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::Sell(_)
             | PumpSwapInstruction::CreatePool(_)
-            | PumpSwapInstruction::Deposit(_) => panic!("expected Withdraw"),
+            | PumpSwapInstruction::Deposit(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Withdraw"),
         }
     }
 
@@ -338,7 +355,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::CreatePool(_)
             | PumpSwapInstruction::Deposit(_)
-            | PumpSwapInstruction::Withdraw(_) => panic!("expected Buy"),
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Buy"),
         }
     }
 
@@ -357,7 +375,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::Sell(_)
             | PumpSwapInstruction::CreatePool(_)
-            | PumpSwapInstruction::Withdraw(_) => panic!("expected Deposit"),
+            | PumpSwapInstruction::Withdraw(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Deposit"),
         }
     }
 
@@ -376,7 +395,8 @@ mod tests {
             | PumpSwapInstruction::BuyExactQuoteIn(_)
             | PumpSwapInstruction::Sell(_)
             | PumpSwapInstruction::CreatePool(_)
-            | PumpSwapInstruction::Deposit(_) => panic!("expected Withdraw"),
+            | PumpSwapInstruction::Deposit(_)
+            | PumpSwapInstruction::CollectCoinCreatorFee(_) => panic!("expected Withdraw"),
         }
     }
 }
