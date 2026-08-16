@@ -26,10 +26,11 @@
 //!
 //! # Prior art, and why this differs
 //!
-//! trading-api compares hand-typed discriminators to an IDL *in a test*. That
-//! keeps the hand-typed copy alive and the check skippable — how a `[0u8; 8]`
-//! placeholder survived here for months. This does not verify a copy; it makes
-//! the IDL the authority for the one fact we cannot derive.
+//! A common pattern is to compare hand-typed discriminators against an IDL *in
+//! a test*. That keeps the hand-typed copy alive and the check skippable —
+//! which is how a `[0u8; 8]` placeholder survived here for months. This does
+//! not verify a copy; it makes the IDL the authority for the one fact we
+//! cannot derive.
 
 use std::path::PathBuf;
 

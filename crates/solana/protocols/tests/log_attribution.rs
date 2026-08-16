@@ -8,7 +8,7 @@
 //! inherits the error silently.
 //!
 //! The fixtures under `fixtures/logs/` are whole mainnet transactions harvested
-//! from the firehose (`CAPTURE_LOG_FIXTURES=<dir>` on talond), one per
+//! from the firehose (`CAPTURE_LOG_FIXTURES=<dir>` on the consuming node), one per
 //! (distinct programs, max CPI depth) shape. Hand-written streams were
 //! deliberately not used: they would encode what we believe the runtime emits,
 //! and this test exists because that belief was wrong.
