@@ -102,11 +102,32 @@ struct Coverage {
 fn measure(
     protocol: &'static str,
     idl_file: &str,
+    program_id: &str,
     parses: &dyn Fn(&[u8]) -> bool,
     known_accounts: &[&str],
     known_events: &[&str],
 ) -> Coverage {
     let idl = idl(idl_file);
+
+    // The IDL must belong to the program we are measuring. Without this the
+    // meter happily reports coverage against a DIFFERENT program's IDL and the
+    // number looks precise while meaning nothing — which is exactly what
+    // happened: meteora_damm.json is Dynamic AMM v1 (Eo7WjKq…) and was used to
+    // measure cp-amm v2 (cpamdpZC…), publishing a confident 0.0%.
+    let declared = idl
+        .get("address")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            idl.get("metadata")
+                .and_then(|m| m.get("address"))
+                .and_then(|v| v.as_str())
+        })
+        .unwrap_or("<none>");
+    assert_eq!(
+        declared, program_id,
+        "{protocol}: idls/{idl_file}.json belongs to program {declared}, not {program_id} — \
+         measuring against the wrong program's IDL produces a precise, meaningless number"
+    );
 
     let ix_names = names(&idl, "instructions");
     let empty = vec![];
@@ -154,10 +175,6 @@ const FLOORS: &[(&str, usize)] = &[
     ("pumpfun", 12),
     ("pumpswap", 9),
     ("meteora_dbc", 2),
-    // Zero is the honest floor: DAMM v2 is extract-only, with no instruction
-    // enum and no account handlers. It is listed so the gap is measured rather
-    // than hidden by omission.
-    ("meteora_damm_v2", 0),
     ("raydium_clmm", 2),
 ];
 
@@ -171,6 +188,7 @@ fn parse_coverage() {
         measure(
             "pumpfun",
             "pump",
+            "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
             &|d| PumpfunInstruction::try_from_slice(d).is_ok(),
             &["BondingCurve", "Global", "FeeConfig"],
             &["TradeEvent"],
@@ -178,6 +196,7 @@ fn parse_coverage() {
         measure(
             "pumpswap",
             "pump_amm",
+            "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
             &|d| PumpSwapInstruction::try_from_slice(d).is_ok(),
             &["Pool"],
             &["BuyEvent", "SellEvent"],
@@ -185,24 +204,15 @@ fn parse_coverage() {
         measure(
             "meteora_dbc",
             "meteora_dbc",
+            "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN",
             &|d| MeteoraDbcInstruction::try_from_slice(d).is_ok(),
             &[],
             &[],
         ),
         measure(
-            "meteora_damm_v2",
-            "meteora_damm",
-            // DAMM v2 is extract-only: it decodes the swap EVENT but has no
-            // instruction enum at all, so instruction coverage is honestly 0.
-            // Reporting it as zero is the point — omitting the protocol would
-            // hide the gap rather than measure it.
-            &|_| false,
-            &[],
-            &["EvtSwap2"],
-        ),
-        measure(
             "raydium_clmm",
             "raydium_clmm",
+            "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK",
             &|d| RaydiumClmmInstruction::try_from_slice(d).is_ok(),
             &[],
             &[],
