@@ -25,11 +25,9 @@ pub use collect_coin_creator_fee::{
 /// Every event this module decodes; see pumpfun's `DECODED_EVENTS` for why the
 /// names come from the impls.
 ///
-/// `BuyEvent` and `SellEvent` are string literals because they are still
-/// hand-counted byte offsets and do not implement `ProtocolEvent`. That
-/// asymmetry is the reminder: converting them is the outstanding work here.
+/// Every name here comes from the impl, so a typo cannot inflate coverage.
 pub const DECODED_EVENTS: &[&str] = &[
-    "BuyEvent",
-    "SellEvent",
+    <BuyEvent as crate::parsing::event::ProtocolEvent>::NAME,
+    <SellEvent as crate::parsing::event::ProtocolEvent>::NAME,
     <CollectCoinCreatorFeeEvent as crate::parsing::event::ProtocolEvent>::NAME,
 ];

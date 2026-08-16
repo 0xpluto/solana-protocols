@@ -118,6 +118,102 @@ pub fn find_child_event<E: ProtocolEvent>(
         })
 }
 
+/// Bytes past every field an event's IDL declares.
+///
+/// Anchor events grow: pump's programs have added fields at least twice, and
+/// both the vendored *and* the live on-chain IDL are currently behind what the
+/// `BuyEvent`/`SellEvent` bodies actually carry — measured 2026-08-15, 25 bytes
+/// each beyond the last declared field.
+///
+/// That matters because borsh's [`try_from_slice`](borsh::BorshDeserialize)
+/// refuses trailing bytes, so a struct built faithfully from an IDL fails on
+/// every real body the moment the program runs ahead of it. This type is the
+/// seam: as the final field of an event it consumes the remainder, which both
+/// makes strict decoding succeed *and* keeps the bytes.
+///
+/// A non-empty tail is therefore not corruption — it is the program telling us
+/// our IDL is stale, with the evidence attached.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UndeclaredTail(Vec<u8>);
+
+impl UndeclaredTail {
+    /// The bytes, exactly as they arrived.
+    #[must_use]
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// How many bytes the program emitted past our field list.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// True when our field list accounts for the whole body.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl BorshDeserialize for UndeclaredTail {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut rest = Vec::new();
+        reader.read_to_end(&mut rest)?;
+        Ok(Self(rest))
+    }
+}
+
+impl borsh::BorshSerialize for UndeclaredTail {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Raw, with no length prefix — it was read raw, and a round trip has to
+        // reproduce the body byte for byte or the fixtures cannot pin anything.
+        writer.write_all(&self.0)
+    }
+}
+
+/// Harvest real event bodies, one per observed length.
+///
+/// Opt-in via `CAPTURE_EVENT_BODIES=<dir>`; a no-op otherwise.
+///
+/// Exists because converting a hand-counted event layout to borsh *cannot* be
+/// verified by a unit test: a synthetic body serialized by the struct that
+/// decodes it proves only that the struct agrees with itself. That mistake
+/// already shipped once here and took pumpswap swaps to zero. The length
+/// distribution of real bodies is the thing that settles which fields the
+/// program actually emits, and which are version-added and absent.
+///
+/// One sample per (event, length) because a thousand bodies of the same length
+/// teach nothing the first one did; lengths are what vary.
+pub fn capture_event_body(name: &str, body: &[u8]) {
+    static SEEN: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<(String, usize)>>> =
+        std::sync::OnceLock::new();
+    static DIR: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+
+    let Some(dir) = DIR
+        .get_or_init(|| std::env::var_os("CAPTURE_EVENT_BODIES").map(Into::into))
+        .as_deref()
+    else {
+        return;
+    };
+    {
+        let Ok(mut seen) = SEEN
+            .get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+            .lock()
+        else {
+            return;
+        };
+        if !seen.insert((name.to_string(), body.len())) {
+            return;
+        }
+    }
+    if std::fs::create_dir_all(dir).is_err() {
+        return;
+    }
+    let hex: String = body.iter().map(|b| format!("{b:02x}")).collect();
+    let _ = std::fs::write(dir.join(format!("{name}_{}.hex", body.len())), hex);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -52,6 +52,7 @@ pub mod state;
 mod traits;
 
 // Layer 1: Generic parsing
+pub use event::UndeclaredTail;
 pub use instruction::{
     attribution_stats, parse_instructions, AttributionStats, ParsedInstruction,
     ParsedInstructionBuilder, RawInstruction,

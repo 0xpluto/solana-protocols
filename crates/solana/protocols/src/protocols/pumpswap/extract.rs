@@ -39,7 +39,7 @@ use crate::chain::{
     ChainEvent, CreatorFee, CreatorPayout, CurveState, ExtractContext, Migration,
     ProtocolExtractor, Swap,
 };
-use crate::parsing::event::find_child_event;
+use crate::parsing::event::{find_child_event, ProtocolEvent};
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::meteora_damm_v2::constants::ANCHOR_EVENT_DISCRIMINATOR;
 use crate::protocols::Protocol;
@@ -132,7 +132,7 @@ fn extract_buy(
     // onto token_in (paid) / token_out (received) for buys.
     let amount_in = event.gross_quote_in();
     let amount_out = event.base_amount_out;
-    let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee.unwrap_or(0);
+    let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee;
 
     Some(ChainEvent::Swap(Swap {
         track_volume,
@@ -184,7 +184,7 @@ fn extract_sell(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<Cha
     // all fees — that's the realized amount_out.
     let amount_in = event.base_amount_in;
     let amount_out = event.user_quote_amount_out;
-    let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee.unwrap_or(0);
+    let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee;
 
     Some(ChainEvent::Swap(Swap {
         // No such argument on this protocol.
@@ -297,14 +297,19 @@ fn extract_create_pool(ix: &ParsedInstruction) -> Option<ChainEvent> {
 
 fn find_buy_event(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<BuyEvent> {
     if let Some(body) = find_inner_event_body(ix, all, &BUY_EVENT_DISCRIMINATOR) {
-        if let Some(ev) = BuyEvent::from_body(body) {
-            return Some(ev);
+        crate::parsing::event::capture_event_body("BuyEvent", body);
+        match BuyEvent::from_event_body(body) {
+            Ok(ev) => return Some(ev),
+            // Loud: a body carrying our discriminator that will not decode is a
+            // layout defect, not a foreign event, and silence here is what let
+            // an earlier bad conversion read as "no swaps today".
+            Err(e) => warn!(%e, len = body.len(), "pumpswap BuyEvent body did not decode"),
         }
     }
     // Legacy emit! — body lives on a program-data log under the
     // event-name discriminator.
     if let Some(payload) = ix.find_data_log_with_discriminator(&BUY_EVENT_DISCRIMINATOR) {
-        if let Some(ev) = BuyEvent::from_body(payload) {
+        if let Ok(ev) = BuyEvent::from_event_body(payload) {
             return Some(ev);
         }
     }
@@ -314,12 +319,14 @@ fn find_buy_event(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<B
 
 fn find_sell_event(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<SellEvent> {
     if let Some(body) = find_inner_event_body(ix, all, &SELL_EVENT_DISCRIMINATOR) {
-        if let Some(ev) = SellEvent::from_body(body) {
-            return Some(ev);
+        crate::parsing::event::capture_event_body("SellEvent", body);
+        match SellEvent::from_event_body(body) {
+            Ok(ev) => return Some(ev),
+            Err(e) => warn!(%e, len = body.len(), "pumpswap SellEvent body did not decode"),
         }
     }
     if let Some(payload) = ix.find_data_log_with_discriminator(&SELL_EVENT_DISCRIMINATOR) {
-        if let Some(ev) = SellEvent::from_body(payload) {
+        if let Ok(ev) = SellEvent::from_event_body(payload) {
             return Some(ev);
         }
     }
