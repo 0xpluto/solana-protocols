@@ -20,12 +20,10 @@ use std::collections::BTreeSet;
 use solana_protocols::protocols::pumpfun::PumpfunInstruction;
 
 /// Measured 2026-08-12. Raise as coverage improves; never lower.
-const INSTRUCTION_FLOOR: usize = 8;
-const ACCOUNT_FLOOR: usize = 3;
-const EVENT_FLOOR: usize = 1;
 
-fn idl() -> serde_json::Value {
-    let text = std::fs::read_to_string("idls/pump.json").expect("vendored IDL present");
+fn idl(file: &str) -> serde_json::Value {
+    let path = format!("idls/{file}.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
     serde_json::from_str(&text).expect("IDL parses")
 }
 
@@ -88,60 +86,141 @@ fn report(kind: &str, covered: &BTreeSet<String>, all: &[String], floor: usize) 
     covered.len()
 }
 
-#[test]
-fn pumpfun_parse_coverage() {
-    let idl = idl();
+/// One protocol's measured coverage.
+struct Coverage {
+    protocol: &'static str,
+    ix: (usize, usize),
+    acct: (usize, usize),
+    ev: (usize, usize),
+}
 
-    // --- instructions: does our parser accept the discriminator? ---
+/// Measure one protocol: how many of the IDL's declared items do we parse?
+///
+/// `parses` is the protocol's own instruction dispatch — passing it in keeps
+/// this generic over nine different enum types without a trait nobody else
+/// needs.
+fn measure(
+    protocol: &'static str,
+    idl_file: &str,
+    parses: &dyn Fn(&[u8]) -> bool,
+    known_accounts: &[&str],
+    known_events: &[&str],
+) -> Coverage {
+    let idl = idl(idl_file);
+
     let ix_names = names(&idl, "instructions");
-    let ix_items = idl["instructions"].as_array().unwrap();
+    let empty = vec![];
+    let ix_items = idl["instructions"].as_array().unwrap_or(&empty);
     let mut ix_covered = BTreeSet::new();
     for (item, name) in ix_items.iter().zip(&ix_names) {
         let mut data = discriminator(item, "global", name).to_vec();
-        // Arguments are irrelevant to dispatch; pad generously so a parser that
-        // recognises the discriminator is not failed for a short body.
         data.extend_from_slice(&[0u8; 256]);
-        if PumpfunInstruction::try_from_slice(&data).is_ok() {
+        if parses(&data) {
             ix_covered.insert(name.clone());
         }
     }
-    let ix = report("INSTRUCTIONS", &ix_covered, &ix_names, INSTRUCTION_FLOOR);
 
-    // --- accounts: do we have a decoder keyed to the discriminator? ---
     let acct_names = names(&idl, "accounts");
-    let known_accounts: BTreeSet<String> = ["BondingCurve", "Global", "FeeConfig"]
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
+    let known_a: BTreeSet<String> = known_accounts.iter().map(|s| (*s).to_string()).collect();
     let acct_covered: BTreeSet<String> = acct_names
         .iter()
-        .filter(|n| known_accounts.contains(*n))
+        .filter(|n| known_a.contains(*n))
         .cloned()
         .collect();
-    let acc = report("ACCOUNTS", &acct_covered, &acct_names, ACCOUNT_FLOOR);
 
-    // --- events ---
     let ev_names = names(&idl, "events");
-    let known_events: BTreeSet<String> = ["TradeEvent"].iter().map(|s| (*s).to_string()).collect();
+    let known_e: BTreeSet<String> = known_events.iter().map(|s| (*s).to_string()).collect();
     let ev_covered: BTreeSet<String> = ev_names
         .iter()
-        .filter(|n| known_events.contains(*n))
+        .filter(|n| known_e.contains(*n))
         .cloned()
         .collect();
-    let ev = report("EVENTS", &ev_covered, &ev_names, EVENT_FLOOR);
 
-    let total = ix + acc + ev;
-    let denom = ix_names.len() + acct_names.len() + ev_names.len();
-    eprintln!(
-        "\n=== pumpfun overall: {total}/{denom} = {:.1}% ===",
-        total as f64 / denom as f64 * 100.0
-    );
+    eprintln!("\n--- {protocol} ---");
+    let ix = report("  instructions", &ix_covered, &ix_names, 0);
+    let acct = report("  accounts", &acct_covered, &acct_names, 0);
+    let ev = report("  events", &ev_covered, &ev_names, 0);
 
-    sync_readme(&[
-        ("instructions", ix, ix_names.len()),
-        ("accounts", acc, acct_names.len()),
-        ("events", ev, ev_names.len()),
-    ]);
+    Coverage {
+        protocol,
+        ix: (ix, ix_names.len()),
+        acct: (acct, acct_names.len()),
+        ev: (ev, ev_names.len()),
+    }
+}
+
+/// Measured 2026-08-12, per protocol. Raise as coverage improves; never lower.
+const FLOORS: &[(&str, usize)] = &[
+    ("pumpfun", 12),
+    ("pumpswap", 9),
+    ("meteora_dbc", 2),
+    // Zero is the honest floor: DAMM v2 is extract-only, with no instruction
+    // enum and no account handlers. It is listed so the gap is measured rather
+    // than hidden by omission.
+    ("meteora_damm_v2", 0),
+    ("raydium_clmm", 2),
+];
+
+#[test]
+fn parse_coverage() {
+    use solana_protocols::protocols::meteora_dbc::MeteoraDbcInstruction;
+    use solana_protocols::protocols::pumpswap::instructions::PumpSwapInstruction;
+    use solana_protocols::protocols::raydium_clmm::RaydiumClmmInstruction;
+
+    let all = vec![
+        measure(
+            "pumpfun",
+            "pump",
+            &|d| PumpfunInstruction::try_from_slice(d).is_ok(),
+            &["BondingCurve", "Global", "FeeConfig"],
+            &["TradeEvent"],
+        ),
+        measure(
+            "pumpswap",
+            "pump_amm",
+            &|d| PumpSwapInstruction::try_from_slice(d).is_ok(),
+            &["Pool"],
+            &["BuyEvent", "SellEvent"],
+        ),
+        measure(
+            "meteora_dbc",
+            "meteora_dbc",
+            &|d| MeteoraDbcInstruction::try_from_slice(d).is_ok(),
+            &[],
+            &[],
+        ),
+        measure(
+            "meteora_damm_v2",
+            "meteora_damm",
+            // DAMM v2 is extract-only: it decodes the swap EVENT but has no
+            // instruction enum at all, so instruction coverage is honestly 0.
+            // Reporting it as zero is the point — omitting the protocol would
+            // hide the gap rather than measure it.
+            &|_| false,
+            &[],
+            &["EvtSwap2"],
+        ),
+        measure(
+            "raydium_clmm",
+            "raydium_clmm",
+            &|d| RaydiumClmmInstruction::try_from_slice(d).is_ok(),
+            &[],
+            &[],
+        ),
+    ];
+
+    for c in &all {
+        let total = c.ix.0 + c.acct.0 + c.ev.0;
+        if let Some((_, floor)) = FLOORS.iter().find(|(p, _)| *p == c.protocol) {
+            assert!(
+                total >= *floor,
+                "{} coverage REGRESSED: {total} < floor {floor}",
+                c.protocol
+            );
+        }
+    }
+
+    sync_readme(&all);
 }
 
 /// Write the measured table into README.md between its markers, and fail if it
@@ -153,23 +232,26 @@ fn pumpfun_parse_coverage() {
 /// Generating it makes the published claim a measurement.
 ///
 /// Set `UPDATE_README=1` to rewrite it; otherwise a stale section fails.
-fn sync_readme(rows: &[(&str, usize, usize)]) {
+fn sync_readme(all: &[Coverage]) {
     let mut table = String::from("<!-- BEGIN:COVERAGE -->\n");
-    table.push_str("| pumpfun | parsed | declared | |\n|---|---:|---:|---|\n");
-    let (mut t, mut d) = (0, 0);
-    for (kind, got, all) in rows {
-        let pct = *got as f64 / *all as f64 * 100.0;
-        // A bar reads faster than a number for "how far is there to go".
+    table.push_str("| protocol | instructions | accounts | events | overall |\n");
+    table.push_str("|---|---:|---:|---:|---|\n");
+    let (mut t, mut d) = (0usize, 0usize);
+    for c in all {
+        let got = c.ix.0 + c.acct.0 + c.ev.0;
+        let all_n = c.ix.1 + c.acct.1 + c.ev.1;
+        let pct = got as f64 / all_n as f64 * 100.0;
         let filled = (pct / 10.0).round() as usize;
         let bar: String = "█".repeat(filled) + &"░".repeat(10 - filled);
-        table.push_str(&format!("| {kind} | {got} | {all} | `{bar}` {pct:.1}% |\n"));
+        table.push_str(&format!(
+            "| {} | {}/{} | {}/{} | {}/{} | `{bar}` {pct:.1}% |\n",
+            c.protocol, c.ix.0, c.ix.1, c.acct.0, c.acct.1, c.ev.0, c.ev.1
+        ));
         t += got;
-        d += all;
+        d += all_n;
     }
     let pct = t as f64 / d as f64 * 100.0;
-    table.push_str(&format!(
-        "| **total** | **{t}** | **{d}** | **{pct:.1}%** |\n"
-    ));
+    table.push_str(&format!("| **total** | | | | **{t}/{d} = {pct:.1}%** |\n"));
     table.push_str("<!-- END:COVERAGE -->");
 
     let path = "README.md";

@@ -80,17 +80,23 @@ of a program we decode, measured against the program's own IDL — the only
 denominator that cannot be chosen to flatter the answer.
 
 <!-- BEGIN:COVERAGE -->
-| pumpfun | parsed | declared | |
-|---|---:|---:|---|
-| instructions | 8 | 40 | `██░░░░░░░░` 20.0% |
-| accounts | 3 | 6 | `█████░░░░░` 50.0% |
-| events | 1 | 23 | `░░░░░░░░░░` 4.3% |
-| **total** | **12** | **69** | **17.4%** |
+| protocol | instructions | accounts | events | overall |
+|---|---:|---:|---:|---|
+| pumpfun | 8/40 | 3/6 | 1/23 | `██░░░░░░░░` 17.4% |
+| pumpswap | 6/25 | 1/7 | 2/22 | `██░░░░░░░░` 16.7% |
+| meteora_dbc | 2/28 | 0/8 | 0/23 | `░░░░░░░░░░` 3.4% |
+| meteora_damm_v2 | 0/26 | 0/3 | 0/18 | `░░░░░░░░░░` 0.0% |
+| raydium_clmm | 2/25 | 0/9 | 0/11 | `░░░░░░░░░░` 4.4% |
+| **total** | | | | **25/274 = 9.1%** |
 <!-- END:COVERAGE -->
 
-These numbers are **generated** by `tests/pumpfun_coverage.rs` and a test fails
+These numbers are **generated** by `tests/parse_coverage.rs` and a test fails
 if this section drifts from what the code actually parses, so they cannot rot
 into decoration. That test is also a ratchet: coverage may only go up.
+
+Protocols with no IDL vendored (Raydium V4, Raydium CPMM, Raydium Launchpad,
+Meteora DLMM) are absent rather than shown at zero — an absent row means "not
+measured", never "not covered", and conflating the two would be its own lie.
 
 One caveat the numbers do not carry on their own. Instruction coverage is
 measured by *discriminator dispatch* — our parser accepting the 8 bytes — not
