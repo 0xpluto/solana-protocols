@@ -132,3 +132,110 @@ pub fn check_accounts(program: &str, instruction: &str, fields: &[String]) -> Re
     }
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+/// The field names an IDL declares for an event type, in order.
+///
+/// # Errors
+///
+/// The IDL is absent, unparseable, or declares no such event type.
+pub fn idl_event_fields(program: &str, event: &str) -> Result<Vec<String>, String> {
+    let path = idl_path(program);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let idl: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", path.display()))?;
+
+    // Anchor keeps event *layouts* under `types`, and `events` only names them.
+    let types = idl
+        .get("types")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("{} has no `types` array", path.display()))?;
+
+    let ty = types
+        .iter()
+        .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(event))
+        .ok_or_else(|| format!("{program}.json declares no type `{event}`"))?;
+
+    ty.get("type")
+        .and_then(|t| t.get("fields"))
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| format!("`{event}` has no `fields` array"))?
+        .iter()
+        .map(|f| {
+            f.get("name")
+                .and_then(|n| n.as_str())
+                .map(str::to_owned)
+                .ok_or_else(|| format!("`{event}` has an unnamed field"))
+        })
+        .collect()
+}
+
+/// One of our event struct's fields, and whether the IDL is expected to know it.
+pub struct EventField {
+    /// The Rust field name.
+    pub name: String,
+    /// `Some(reason)` when the field is deliberately absent from the IDL.
+    pub undeclared: Option<String>,
+}
+
+/// Compare an event struct's fields to the IDL's, in order.
+///
+/// Fields carrying `#[idl(undeclared = "...")]` are *skipped*: the program
+/// emits bytes its published interface does not describe — measured on pump's
+/// AMM 2026-08-15, 25 bytes past the last declared field on both trade events —
+/// and a decoder that refuses to model them either loses the data or, because
+/// borsh rejects trailing bytes, fails on every real body.
+///
+/// The exemption is per field and must state a reason, so "the IDL does not
+/// declare this" is a claim someone wrote down rather than a silent gap. Every
+/// other field must match the IDL by name and order.
+///
+/// Declared fields may stop short of the IDL's list — a decoder that reads a
+/// prefix is correct — but may never rename or reorder one.
+///
+/// # Errors
+///
+/// Any disagreement in name or order among the non-exempt fields, or an
+/// exemption reason that is empty.
+pub fn check_event_fields(program: &str, event: &str, fields: &[EventField]) -> Result<(), String> {
+    let expected = idl_event_fields(program, event)?;
+    let mut want = expected.iter();
+
+    for f in fields {
+        if let Some(reason) = &f.undeclared {
+            if reason.trim().is_empty() {
+                return Err(format!(
+                    "field `{}` of `{event}` is marked undeclared with no reason; \
+                     say what it is, or `unknown` if that is the honest answer",
+                    f.name
+                ));
+            }
+            continue;
+        }
+        match want.next() {
+            Some(w) if *w == f.name => {}
+            Some(w) => {
+                return Err(format!(
+                    "`{event}` in {program}.json declares `{w}` where this struct \
+                     has `{}` — if the program emits it but the IDL does not, mark \
+                     it `#[idl(undeclared = \"...\")]`",
+                    f.name
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "`{event}` has {} fields in {program}.json; this struct declares \
+                     `{}` past the end — mark it `#[idl(undeclared = \"...\")]` if the \
+                     program emits it anyway",
+                    expected.len(),
+                    f.name
+                ));
+            }
+        }
+    }
+    Ok(())
+}

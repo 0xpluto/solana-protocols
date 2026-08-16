@@ -63,6 +63,7 @@ use proc_macro::TokenStream;
 mod account_metas;
 mod build_accounts;
 mod discriminator;
+mod event_layout;
 mod idl_check;
 mod instruction_data;
 mod log_parser;
@@ -94,6 +95,16 @@ pub fn derive_build_accounts(input: TokenStream) -> TokenStream {
 /// discriminator, `deserialize` over a decode fn, an `impl VerifiedDecoder`, and
 /// an emitted golden-fixture `#[test]`. See `onchain_account` for the full
 /// contract. The author still writes the struct, `new()`, and `apply`.
+/// Verify an event struct's field list against the program's vendored IDL.
+///
+/// Requires `#[idl(program = "…", event = "…")]`. A field the program emits but
+/// the IDL does not declare opts out with `#[idl(undeclared = "reason")]`; the
+/// reason is mandatory and `unknown` is a legitimate one.
+#[proc_macro_derive(EventLayout, attributes(idl))]
+pub fn derive_event_layout(input: TokenStream) -> TokenStream {
+    event_layout::derive(input)
+}
+
 #[proc_macro_derive(OnchainAccount, attributes(onchain))]
 pub fn derive_onchain_account(input: TokenStream) -> TokenStream {
     onchain_account::derive(input)

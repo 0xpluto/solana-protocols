@@ -60,51 +60,61 @@ fn a_real_sell_body_decodes() {
     assert_eq!(ev.protocol_fee_basis_points, 5);
 }
 
-/// The fee split the old 23-field table could not see at all.
-///
-/// `buyback_fee` is exactly half of `protocol_fee` at 5000bp, which is what
-/// identified these fields in the first place: the arithmetic only works if the
-/// offsets are right, so it doubles as a layout check.
+/// The 25 bytes past the IDL are now named fields, so the tail behind them is
+/// empty — and this is the assertion that tells us when the program grows
+/// again. If it fails with a non-zero length, pump added something new; the
+/// tail is what keeps decoding working meanwhile.
 #[test]
-fn the_buyback_split_is_half_the_protocol_fee() {
-    let ev = SellEvent::from_event_body(&body("SellEvent_409")).expect("decode");
-    assert_eq!(ev.buyback_fee_basis_points, 5_000);
-    assert_eq!(ev.protocol_fee, 374_812_397);
-    assert_eq!(ev.buyback_fee, 187_406_198);
-    assert_eq!(
-        ev.buyback_fee,
-        ev.protocol_fee * ev.buyback_fee_basis_points / 10_000,
-        "5000bp of the protocol fee, floored"
+fn the_named_undeclared_fields_account_for_the_whole_body() {
+    let buy = BuyEvent::from_event_body(&body("BuyEvent_457")).expect("decode");
+    let sell = SellEvent::from_event_body(&body("SellEvent_409")).expect("decode");
+    assert!(
+        buy.undeclared_tail.is_empty() && sell.undeclared_tail.is_empty(),
+        "buy tail {} / sell tail {} — the program emitted more than we model",
+        buy.undeclared_tail.len(),
+        sell.undeclared_tail.len()
     );
 }
 
-/// Every real body carries bytes past the last field *either* IDL declares.
+/// The undeclared block carries data, not padding — which is why it is modelled
+/// rather than skipped.
 ///
-/// This is the fact that broke the previous attempt: borsh refuses trailing
-/// bytes, so a struct faithful to the IDL rejects every body the program sends.
-/// If this assertion ever fails with zero, the IDL caught up and the tail field
-/// can be replaced by the real ones.
+/// `undeclared_flag` is typed `bool` deliberately: borsh refuses any byte
+/// outside {0, 1}, so if the 8/8/1/8 split is wrong, the next real body fails
+/// loudly instead of yielding plausible garbage.
 #[test]
-fn every_real_body_runs_past_the_published_idl() {
+fn the_undeclared_block_is_data() {
     let buy = BuyEvent::from_event_body(&body("BuyEvent_457")).expect("decode");
-    let sell = SellEvent::from_event_body(&body("SellEvent_409")).expect("decode");
-    assert_eq!(buy.undeclared_tail.len(), 25, "buy tail");
-    assert_eq!(sell.undeclared_tail.len(), 25, "sell tail");
+    assert_eq!(buy.undeclared_0, 17_584_505_290);
+    assert_eq!(buy.undeclared_1, 0);
+    assert!(buy.undeclared_flag, "set on both captured buys");
+    assert!(buy.undeclared_2 > 0, "moves with the trade");
 
-    // Not padding. The buy tails carry values, and their shape across samples
-    // is u64, u64, bool, u64 - the bool reads 1 on both buys and 0 on the sell,
-    // and the trailing u64 moves with the trade. Naming these would be a guess,
-    // so they stay bytes; asserting they are non-zero is what stops the next
-    // reader from writing them off as alignment slack and dropping them.
-    assert!(
-        buy.undeclared_tail.as_slice().iter().any(|b| *b != 0),
-        "the buy tail carries data, not padding"
-    );
+    let sell = SellEvent::from_event_body(&body("SellEvent_409")).expect("decode");
+    assert!(!sell.undeclared_flag, "clear on the captured sell");
+}
+
+/// The two fields the *vendored* IDL was missing until it was refreshed from
+/// chain. Kept as a test because they are checkable: the buyback is 5000bp of
+/// the protocol fee, so the arithmetic only works at the right offsets.
+#[test]
+fn buyback_is_declared_and_checks_out() {
+    let ev = SellEvent::from_event_body(&body("SellEvent_409")).expect("decode");
+    assert_eq!(ev.buyback_fee_basis_points, 5_000);
     assert_eq!(
-        buy.undeclared_tail.as_slice()[16],
-        1,
-        "byte 16 of the tail reads as a set flag on both captured buys"
+        ev.buyback_fee,
+        ev.protocol_fee * ev.buyback_fee_basis_points / 10_000
     );
+    // These are IDL-declared, so the layout derive checks them and they are
+    // *not* exempt. Count is the guard: if someone marks one undeclared to make
+    // a build pass, this drops.
+    assert_eq!(
+        SellEvent::UNDECLARED_FIELDS,
+        5,
+        "four unknown fields plus the growth tail"
+    );
+    assert_eq!(SellEvent::IDL_DECLARED_FIELDS, 27);
+    assert_eq!(BuyEvent::IDL_DECLARED_FIELDS, 34);
 }
 
 /// Re-serializing reproduces the body byte for byte, tail included. Without
