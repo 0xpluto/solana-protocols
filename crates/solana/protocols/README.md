@@ -73,6 +73,32 @@ what does a swap cost right now, and what instruction executes it.
 
 ¹ Standalone `quote_exact_in` / `quote_exact_out`; not yet behind the `SwapMath` trait.
 
+### Measured parse completeness
+
+The table above says which protocols we decode *at all*. This one says how much
+of a program we decode, measured against the program's own IDL — the only
+denominator that cannot be chosen to flatter the answer.
+
+<!-- BEGIN:COVERAGE -->
+| pumpfun | parsed | declared | |
+|---|---:|---:|---|
+| instructions | 8 | 40 | `██░░░░░░░░` 20.0% |
+| accounts | 3 | 6 | `█████░░░░░` 50.0% |
+| events | 1 | 23 | `░░░░░░░░░░` 4.3% |
+| **total** | **12** | **69** | **17.4%** |
+<!-- END:COVERAGE -->
+
+These numbers are **generated** by `tests/pumpfun_coverage.rs` and a test fails
+if this section drifts from what the code actually parses, so they cannot rot
+into decoration. That test is also a ratchet: coverage may only go up.
+
+One caveat the numbers do not carry on their own. Instruction coverage is
+measured by *discriminator dispatch* — our parser accepting the 8 bytes — not
+by decoding a real instruction body. It is therefore an **upper bound**: at
+least one instruction counted as covered here fails on live data. Treat it as
+"how much of the program do we recognise", not "how much do we read correctly".
+
+
 `Protocol` is a closed enum with no `_` wildcards anywhere, so adding a variant
 breaks every site that needs updating — a compile-time checklist rather than a
 runtime surprise. Protocols outside the cache-composed quote path are listed

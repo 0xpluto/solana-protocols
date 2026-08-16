@@ -136,4 +136,57 @@ fn pumpfun_parse_coverage() {
         "\n=== pumpfun overall: {total}/{denom} = {:.1}% ===",
         total as f64 / denom as f64 * 100.0
     );
+
+    sync_readme(&[
+        ("instructions", ix, ix_names.len()),
+        ("accounts", acc, acct_names.len()),
+        ("events", ev, ev_names.len()),
+    ]);
+}
+
+/// Write the measured table into README.md between its markers, and fail if it
+/// had drifted.
+///
+/// The README is for people who have not read the code, so a coverage number
+/// there is load-bearing — and a hand-maintained one becomes decoration the
+/// first time somebody improves coverage without remembering to edit prose.
+/// Generating it makes the published claim a measurement.
+///
+/// Set `UPDATE_README=1` to rewrite it; otherwise a stale section fails.
+fn sync_readme(rows: &[(&str, usize, usize)]) {
+    let mut table = String::from("<!-- BEGIN:COVERAGE -->\n");
+    table.push_str("| pumpfun | parsed | declared | |\n|---|---:|---:|---|\n");
+    let (mut t, mut d) = (0, 0);
+    for (kind, got, all) in rows {
+        let pct = *got as f64 / *all as f64 * 100.0;
+        // A bar reads faster than a number for "how far is there to go".
+        let filled = (pct / 10.0).round() as usize;
+        let bar: String = "█".repeat(filled) + &"░".repeat(10 - filled);
+        table.push_str(&format!("| {kind} | {got} | {all} | `{bar}` {pct:.1}% |\n"));
+        t += got;
+        d += all;
+    }
+    let pct = t as f64 / d as f64 * 100.0;
+    table.push_str(&format!(
+        "| **total** | **{t}** | **{d}** | **{pct:.1}%** |\n"
+    ));
+    table.push_str("<!-- END:COVERAGE -->");
+
+    let path = "README.md";
+    let readme = std::fs::read_to_string(path).expect("README present");
+    let (start, end) = ("<!-- BEGIN:COVERAGE -->", "<!-- END:COVERAGE -->");
+    let (Some(a), Some(b)) = (readme.find(start), readme.find(end)) else {
+        panic!("README lost its COVERAGE markers");
+    };
+    let current = &readme[a..b + end.len()];
+    if current == table {
+        return;
+    }
+    if std::env::var("UPDATE_README").is_ok() {
+        let updated = format!("{}{}{}", &readme[..a], table, &readme[b + end.len()..]);
+        std::fs::write(path, updated).expect("README writable");
+        eprintln!("README coverage section updated");
+        return;
+    }
+    panic!("README coverage section is stale. Re-run with UPDATE_README=1.\n\nexpected:\n{table}");
 }
