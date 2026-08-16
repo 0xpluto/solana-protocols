@@ -1,29 +1,43 @@
-//! `track_volume` — an argument whose on-chain encoding is not consistent.
+//! `OptionBool` — a pump-family argument whose on-chain encoding is not
+//! consistent.
 //!
-//! The IDL types it as `OptionBool`, which it defines as
-//! `{"kind": "struct", "fields": ["bool"]}` — a struct wrapping a `bool`, so
-//! the canonical wire form is a **single byte**. Senders do not agree. Observed
-//! on mainnet: the argument omitted entirely, the canonical one byte, and a
-//! two-byte form that is borsh's `Option<bool>` encoding — three conventions
-//! for one argument, plus a malformed pair.
+//! Named after the type the programs themselves declare. Both `pump.json` and
+//! `pump_amm.json` define it as `{"kind":"struct","fields":["bool"]}` — a
+//! struct wrapping a `bool`, so the canonical wire form is a **single byte**.
+//! It is *not* borsh's `Option<bool>`, and reading it as one is what stopped
+//! pumpfun's `create_v2` from ever parsing a real instruction.
 //!
-//! Every observed form is its own variant, deliberately. Normalising them into
-//! `Option<bool>` would answer "what did the sender mean" — a question we
-//! cannot answer for all of them and do not need to. A variant per byte string
+//! Senders do not agree on the encoding. Observed on mainnet: the argument
+//! omitted entirely, the canonical one byte, and a two-byte form that is
+//! borsh's `Option<bool>` — three conventions for one argument, plus a
+//! malformed pair.
+//!
+//! # Why it lives here and not under one protocol
+//!
+//! Measured, not assumed: `OptionBool` appears in exactly two of the vendored
+//! IDLs, pumpfun and pumpswap, across six instructions — pumpfun `buy`,
+//! `buy_exact_sol_in`, `create_v2`; pumpswap `buy`, `buy_exact_quote_in`,
+//! `create_pool`. No other vendored program declares it. Other protocols do
+//! carry trailing defined-type arguments (`SwapParameters`,
+//! `ConfigParameters`, `Fees`) but those are ordinary parameter structs, not
+//! optional-bool trailers.
+//!
+//! So this is a **pump-family convention, not a Solana-wide one**. It sits at
+//! `protocols::` because two sibling protocols share it, and it is deliberately
+//! not generalised further than the evidence supports.
+//!
+//! # Why every form is its own variant
+//!
+//! Normalising them into `Option<bool>` would answer "what did the sender
+//! mean", which for one form cannot be answered. A variant per byte string
 //! makes encode/decode total and, more usefully, makes the distribution
-//! *countable*: we can now measure which forms actually occur before deciding
-//! whether any of them matter.
+//! *countable*: the encoding a sender chose is a fingerprint of their tooling,
+//! so an anomaly here is data rather than an error.
 //!
-//! It is not a cosmetic distinction. Setting the flag changes which accounts
-//! the instruction expects — the volume accumulators — so a builder that
-//! guesses the encoding can produce an instruction whose account list does not
-//! match its own arguments.
-//!
-//! Applies to `buy` and `buy_exact_sol_in` (both 16 accounts, volume
-//! accumulators at slots 12–13). The v2 buys do **not** declare it in either
-//! the vendored or the live IDL, despite 25-byte `buy_exact_quote_in_v2`
-//! instructions appearing on chain alongside a 28th account — that pairing is
-//! real and measured, but it is not this argument, and its cause is open.
+//! It is not cosmetic. On the buy instructions the flag changes which accounts
+//! the program expects — the volume accumulators — so a builder that guesses
+//! the encoding can emit an instruction whose account list contradicts its own
+//! arguments.
 
 /// The wire forms of `track_volume` observed on mainnet.
 ///
@@ -32,7 +46,7 @@
 #[derive(
     Default, PartialEq, Eq, Hash, Debug, Clone, Copy, serde::Serialize, serde::Deserialize,
 )]
-pub enum TrackVolume {
+pub enum OptionBool {
     /// Argument omitted — serializes to `[]`.
     #[default]
     None,
@@ -55,7 +69,7 @@ pub enum TrackVolume {
     SomeFalseExtraInvalid,
 }
 
-impl TrackVolume {
+impl OptionBool {
     /// The exact bytes this form serializes to.
     #[must_use]
     pub const fn to_bytes(self) -> &'static [u8] {
@@ -79,7 +93,7 @@ impl TrackVolume {
     /// # Errors
     ///
     /// The bytes match no observed form.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, UnknownTrackVolume> {
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, UnknownOptionBool> {
         match bytes {
             [] => Ok(Self::None),
             [0] => Ok(Self::SomeFalse),
@@ -87,7 +101,7 @@ impl TrackVolume {
             [1, 1] => Ok(Self::SomeTrueExtra),
             [1, 0] => Ok(Self::SomeFalseExtra),
             [0, 1] => Ok(Self::SomeFalseExtraInvalid),
-            other => Err(UnknownTrackVolume(other.to_vec())),
+            other => Err(UnknownOptionBool(other.to_vec())),
         }
     }
 
@@ -112,7 +126,7 @@ impl TrackVolume {
 /// A `track_volume` encoding we have never seen on chain.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("unrecognised track_volume encoding: {0:?}")]
-pub struct UnknownTrackVolume(pub Vec<u8>);
+pub struct UnknownOptionBool(pub Vec<u8>);
 
 #[cfg(test)]
 mod tests {
@@ -123,16 +137,16 @@ mod tests {
     #[test]
     fn each_form_round_trips_and_is_distinct() {
         let all = [
-            TrackVolume::None,
-            TrackVolume::SomeFalse,
-            TrackVolume::SomeTrue,
-            TrackVolume::SomeTrueExtra,
-            TrackVolume::SomeFalseExtra,
-            TrackVolume::SomeFalseExtraInvalid,
+            OptionBool::None,
+            OptionBool::SomeFalse,
+            OptionBool::SomeTrue,
+            OptionBool::SomeTrueExtra,
+            OptionBool::SomeFalseExtra,
+            OptionBool::SomeFalseExtraInvalid,
         ];
         let mut seen = std::collections::HashSet::new();
         for v in all {
-            assert_eq!(TrackVolume::from_bytes(v.to_bytes()), Ok(v));
+            assert_eq!(OptionBool::from_bytes(v.to_bytes()), Ok(v));
             assert!(seen.insert(v.to_bytes()), "{v:?} shares an encoding");
         }
         assert_eq!(seen.len(), 6);
@@ -142,25 +156,25 @@ mod tests {
     /// mistake `Legacy<T>` exists to prevent, one layer down.
     #[test]
     fn absent_is_not_false() {
-        assert_ne!(TrackVolume::None, TrackVolume::SomeFalse);
-        assert_eq!(TrackVolume::None.requested(), None);
-        assert_eq!(TrackVolume::SomeFalse.requested(), Some(false));
+        assert_ne!(OptionBool::None, OptionBool::SomeFalse);
+        assert_eq!(OptionBool::None.requested(), None);
+        assert_eq!(OptionBool::SomeFalse.requested(), Some(false));
     }
 
     /// The ambiguous form refuses to answer rather than picking a reading.
     #[test]
     fn the_ambiguous_form_declines_to_resolve() {
-        assert_eq!(TrackVolume::SomeFalseExtra.requested(), None);
-        assert_eq!(TrackVolume::SomeFalseExtra.to_bytes(), &[1, 0]);
+        assert_eq!(OptionBool::SomeFalseExtra.requested(), None);
+        assert_eq!(OptionBool::SomeFalseExtra.to_bytes(), &[1, 0]);
     }
 
     /// An unseen encoding errors rather than snapping to a neighbour.
     #[test]
     fn an_unseen_encoding_is_refused() {
         assert_eq!(
-            TrackVolume::from_bytes(&[2]),
-            Err(UnknownTrackVolume(vec![2]))
+            OptionBool::from_bytes(&[2]),
+            Err(UnknownOptionBool(vec![2]))
         );
-        assert!(TrackVolume::from_bytes(&[1, 1, 1]).is_err());
+        assert!(OptionBool::from_bytes(&[1, 1, 1]).is_err());
     }
 }

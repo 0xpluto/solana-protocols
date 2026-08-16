@@ -82,11 +82,11 @@ denominator that cannot be chosen to flatter the answer.
 <!-- BEGIN:COVERAGE -->
 | protocol | instructions | accounts | events | overall |
 |---|---:|---:|---:|---|
-| pumpfun | 7/40 | 3/6 | 1/23 | `██░░░░░░░░` 15.9% |
+| pumpfun | 8/40 | 3/6 | 1/23 | `██░░░░░░░░` 17.4% |
 | pumpswap | 6/25 | 1/7 | 2/22 | `██░░░░░░░░` 16.7% |
 | meteora_dbc | 2/28 | 0/8 | 0/23 | `░░░░░░░░░░` 3.4% |
 | raydium_clmm | 2/25 | 0/9 | 0/11 | `░░░░░░░░░░` 4.4% |
-| **total** | | | | **24/227 = 10.6%** |
+| **total** | | | | **25/227 = 11.0%** |
 <!-- END:COVERAGE -->
 
 These numbers are **generated** by `tests/parse_coverage.rs` and a test fails
@@ -97,16 +97,7 @@ Protocols with no IDL vendored (Raydium V4, Raydium CPMM, Raydium Launchpad,
 Meteora DLMM, Meteora DAMM v2) are absent rather than shown at zero — an absent row means "not
 measured", never "not covered", and conflating the two would be its own lie.
 
-Two caveats the numbers do not carry on their own.
-
-The first is that a **stricter** parser can score *lower* here. Coverage probes
-each instruction with a synthetic body, so a parser that refuses malformed
-input is penalised against one that accepts anything. `create_v2` is exactly
-this case: it parses real instructions and rejects zero-padding, and counts as
-uncovered. Measuring against captured bodies rather than synthetic ones is the
-fix.
-
-The second. Instruction coverage is
+One caveat the numbers do not carry on their own. Instruction coverage is
 measured by *discriminator dispatch* — our parser accepting the 8 bytes — not
 by decoding a real instruction body. It is therefore an **upper bound**: at
 least one instruction counted as covered here fails on live data. Treat it as

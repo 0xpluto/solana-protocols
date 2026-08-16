@@ -125,6 +125,14 @@ pub struct BuyParams {
     pub amount: u64,
     /// Maximum SOL to spend (slippage protection).
     pub max_sol_cost: u64,
+    /// Trailing `OptionBool` the IDL declares for this instruction.
+    ///
+    /// Load-bearing rather than cosmetic: setting it changes which accounts
+    /// the program expects (the volume accumulators), so dropping it made a
+    /// builder able to emit an instruction whose accounts contradict its own
+    /// arguments. See [`OptionBool`](crate::protocols::OptionBool) for why the
+    /// encoding is not `Option<bool>`.
+    pub track_volume: crate::protocols::OptionBool,
 }
 
 impl BuyParams {
@@ -134,7 +142,23 @@ impl BuyParams {
         BuyParams {
             amount,
             max_sol_cost,
+            // Absent, which serialises to nothing and so keeps what we emit
+            // byte-identical to before this field existed. Use
+            // `with_track_volume` to set it deliberately — and note that
+            // setting it changes which accounts the program expects.
+            track_volume: crate::protocols::OptionBool::None,
         }
+    }
+
+    /// Set the trailing `OptionBool`.
+    ///
+    /// Separate from [`new`](Self::new) on purpose: the flag is not a free
+    /// parameter, it changes the account list the program requires, so opting
+    /// into it should be a visible act at the call site.
+    #[must_use]
+    pub fn with_track_volume(mut self, track_volume: crate::protocols::OptionBool) -> Self {
+        self.track_volume = track_volume;
+        self
     }
 
     /// Create buy parameters from swap output with slippage.
@@ -152,6 +176,7 @@ impl BuyParams {
         BuyParams {
             amount: min_tokens,
             max_sol_cost: max_sol,
+            track_volume: crate::protocols::OptionBool::None,
         }
     }
 
@@ -162,6 +187,9 @@ impl BuyParams {
         data.extend_from_slice(&BUY_DISCRIMINATOR);
         data.extend_from_slice(&self.amount.to_le_bytes());
         data.extend_from_slice(&self.max_sol_cost.to_le_bytes());
+        // Absent serialises to nothing, so an unset flag reproduces the
+        // pre-2026-08-12 bytes exactly.
+        data.extend_from_slice(self.track_volume.to_bytes());
         data
     }
 }
@@ -180,6 +208,8 @@ pub struct BuyExactInParams {
     pub spendable_in: u64,
     /// Minimum tokens to accept.
     pub min_tokens_out: u64,
+    /// Trailing `OptionBool` — see [`BuyParams::track_volume`].
+    pub track_volume: crate::protocols::OptionBool,
 }
 
 impl FromInstructionData for BuyExactInParams {
@@ -193,6 +223,8 @@ impl FromInstructionData for BuyExactInParams {
         Ok(Self {
             spendable_in: u64::from_le_bytes(data[0..8].try_into().unwrap()),
             min_tokens_out: u64::from_le_bytes(data[8..16].try_into().unwrap()),
+            track_volume: crate::protocols::OptionBool::from_bytes(&data[16..])
+                .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?,
         })
     }
 }
@@ -210,6 +242,8 @@ impl FromInstructionData for BuyParams {
         Ok(BuyParams {
             amount,
             max_sol_cost,
+            track_volume: crate::protocols::OptionBool::from_bytes(&data[16..])
+                .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?,
         })
     }
 }

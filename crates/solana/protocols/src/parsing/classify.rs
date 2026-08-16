@@ -309,6 +309,7 @@ mod tests {
         let ix = PumpfunInstruction::BuyExactSolIn(BuyExactInParams {
             spendable_in: 500_000,
             min_tokens_out: 9,
+            track_volume: crate::protocols::OptionBool::None,
         });
         let swap = ix.as_swap().expect("classifies");
         assert!(matches!(swap.amount_in, SwapAmount::Exact(500_000)));

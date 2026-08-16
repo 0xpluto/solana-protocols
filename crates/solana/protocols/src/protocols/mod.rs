@@ -33,6 +33,9 @@
 //! Each protocol's instruction builder must implement:
 //! - `InstructionBuilder` - Build Solana instructions
 
+pub mod option_bool;
+pub use option_bool::{OptionBool, UnknownOptionBool};
+
 pub mod pumpfun;
 pub mod pumpswap;
 pub mod raydium_v4;

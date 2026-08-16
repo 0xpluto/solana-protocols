@@ -36,7 +36,7 @@
 //! uri:                 string
 //! creator:             Pubkey (32 bytes)
 //! is_mayhem_mode:      bool   (1 byte)
-//! is_cashback_enabled: OptionBool — see TrackVolume; the IDL defines it as a
+//! is_cashback_enabled: OptionBool — see OptionBool; the IDL defines it as a
 //!                      struct wrapping a bool (ONE byte), and senders also emit
 //!                      the absent and two-byte forms.
 //! ```
@@ -122,12 +122,12 @@ pub struct CreateV2Params {
     /// fee recipient + reserved-recipient routing — see
     /// `PumpfunGlobal::reserved_fee_recipients`).
     pub is_mayhem_mode: bool,
-    /// Cashback flag as it appeared on the wire. See [`TrackVolume`] for why
+    /// Cashback flag as it appeared on the wire. See [`OptionBool`] for why
     /// this is not an `Option<bool>`: the encoding is inconsistent on chain and
     /// the form itself is evidence about the sender.
     ///
-    /// [`TrackVolume`]: crate::protocols::pumpfun::TrackVolume
-    pub is_cashback_enabled: super::super::TrackVolume,
+    /// [`OptionBool`]: crate::protocols::OptionBool
+    pub is_cashback_enabled: crate::protocols::OptionBool,
 }
 
 impl CreateV2Params {
@@ -150,7 +150,7 @@ impl FromInstructionData for CreateV2Params {
         // absent and two-byte forms. Reading it as a tagged option consumed a
         // value byte that is not there, which is why every live 132-byte
         // create_v2 failed to parse while the discriminator dispatched fine.
-        let is_cashback_enabled = super::super::TrackVolume::from_bytes(&data[offset..])
+        let is_cashback_enabled = crate::protocols::OptionBool::from_bytes(&data[offset..])
             .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?;
 
         Ok(Self {
@@ -250,7 +250,7 @@ mod tests {
         // reads true-then-junk. We record the bytes and decline to resolve it.
         assert_eq!(
             p.is_cashback_enabled,
-            crate::protocols::pumpfun::TrackVolume::SomeFalseExtra
+            crate::protocols::OptionBool::SomeFalseExtra
         );
     }
 
@@ -272,7 +272,7 @@ mod tests {
         // is why every live create_v2 failed to parse.
         assert_eq!(
             p.is_cashback_enabled,
-            crate::protocols::pumpfun::TrackVolume::SomeFalse
+            crate::protocols::OptionBool::SomeFalse
         );
     }
 

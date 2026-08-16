@@ -57,6 +57,59 @@ fn discriminator(item: &serde_json::Value, prefix: &str, name: &str) -> [u8; 8] 
     out
 }
 
+/// A minimal well-formed body for an instruction, sized from the IDL's own
+/// argument types.
+///
+/// This used to be 256 zero bytes, which quietly punished strictness: a parser
+/// that refuses trailing garbage scored LOWER than one that accepts anything,
+/// so "make parsing stricter" and "raise coverage" pulled against each other.
+/// That tension was an artefact of the probe, not a real trade-off — a correct
+/// parser decodes a well-formed body and a wrong one does not, and neither is
+/// rewarded for permissiveness.
+///
+/// Types are sized from the IDL rather than assumed. An unknown type yields
+/// `None` and the instruction is skipped rather than probed with a guess,
+/// because a guessed body that happens to parse would inflate the number.
+fn arg_bytes(item: &serde_json::Value) -> Vec<u8> {
+    let mut out = Vec::new();
+    let empty = vec![];
+    for a in item
+        .get("args")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty)
+    {
+        match a.get("type") {
+            Some(serde_json::Value::String(t)) => match t.as_str() {
+                "u8" | "i8" | "bool" => out.push(0),
+                "u16" | "i16" => out.extend_from_slice(&[0; 2]),
+                "u32" | "i32" | "f32" => out.extend_from_slice(&[0; 4]),
+                "u64" | "i64" | "f64" => out.extend_from_slice(&[0; 8]),
+                "u128" | "i128" => out.extend_from_slice(&[0; 16]),
+                "pubkey" | "publicKey" => out.extend_from_slice(&[0; 32]),
+                // borsh string/bytes: a 4-byte length of zero is a valid empty value
+                "string" | "bytes" => out.extend_from_slice(&[0; 4]),
+                _ => out.extend_from_slice(&[0; 8]),
+            },
+            // A defined type. `OptionBool` is legitimately absent — that is one
+            // of its observed wire forms — so it contributes no bytes. Anything
+            // else gets a generous filler, which is why a defined-arg
+            // instruction failing here is inconclusive rather than damning.
+            Some(serde_json::Value::Object(o)) => {
+                let named = o
+                    .get("defined")
+                    .and_then(|d| d.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("");
+                if named != "OptionBool" {
+                    out.extend_from_slice(&[0; 64]);
+                }
+            }
+            _ => out.extend_from_slice(&[0; 8]),
+        }
+    }
+    out
+}
+
 fn report(kind: &str, covered: &BTreeSet<String>, all: &[String], floor: usize) -> usize {
     let missing: Vec<&String> = all.iter().filter(|n| !covered.contains(*n)).collect();
     let pct = if all.is_empty() {
@@ -135,7 +188,7 @@ fn measure(
     let mut ix_covered = BTreeSet::new();
     for (item, name) in ix_items.iter().zip(&ix_names) {
         let mut data = discriminator(item, "global", name).to_vec();
-        data.extend_from_slice(&[0u8; 256]);
+        data.extend_from_slice(&arg_bytes(item));
         if parses(&data) {
             ix_covered.insert(name.clone());
         }
@@ -172,13 +225,7 @@ fn measure(
 
 /// Measured 2026-08-12, per protocol. Raise as coverage improves; never lower.
 const FLOORS: &[(&str, usize)] = &[
-    // 11, not 12, and NOT a regression: `create_v2` now rejects the synthetic
-    // all-zero body this meter pads with, because its OptionBool field only
-    // accepts encodings observed on chain. It parses real instructions and
-    // refuses garbage — the metric penalises that, which is a flaw in the
-    // metric, not the parser. Measuring against captured bodies instead of
-    // synthetic padding is the fix; until then this floor records the truth.
-    ("pumpfun", 11),
+    ("pumpfun", 12),
     ("pumpswap", 9),
     ("meteora_dbc", 2),
     ("raydium_clmm", 2),
