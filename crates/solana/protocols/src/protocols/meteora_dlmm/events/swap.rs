@@ -16,6 +16,14 @@ pub const SWAP_EVENT_DISCRIMINATOR: [u8; 8] = [81, 108, 227, 190, 205, 208, 10, 
 /// responsible for having already stripped the 16 bytes of
 /// envelope (anchor event disc + per-event disc) — see
 /// [`super::parse_event_body`].
+impl crate::parsing::event::ProtocolEvent for SwapEvent {
+    const DISCRIMINATOR: [u8; 8] = SWAP_EVENT_DISCRIMINATOR;
+    const NAME: &'static str = "Swap";
+}
+
+/// Retained as the generated shape's entry point; prefer the
+/// [`ProtocolEvent`](crate::parsing::event::ProtocolEvent) trait, which also
+/// handles the envelope instead of leaving that to each caller.
 pub fn decode(body: &[u8]) -> Result<SwapEvent, InstructionParseError> {
     SwapEvent::try_from_slice(body).map_err(|e| {
         InstructionParseError::DeserializationFailed(format!(

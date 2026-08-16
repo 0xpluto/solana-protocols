@@ -42,6 +42,7 @@
 
 pub mod anchor;
 mod classify;
+pub mod event;
 mod instruction;
 mod log;
 mod registry;
