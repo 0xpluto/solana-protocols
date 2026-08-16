@@ -1,0 +1,69 @@
+{
+  "signature": "3tpSF64a4ff8DKvrRRfQw6Z5yfdAfnvE8tMjACLcMmUatNCgREBKhSjMxCu3Fi9y7viPqurBwLNGCEJeUWrUwZqh",
+  "slot": 439486364,
+  "instructions": [
+    {
+      "program": "ComputeBudget111111111111111111111111111111",
+      "stack_height": 1
+    },
+    {
+      "program": "ComputeBudget111111111111111111111111111111",
+      "stack_height": 1
+    },
+    {
+      "program": "MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e",
+      "stack_height": 1
+    },
+    {
+      "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+      "stack_height": 2
+    },
+    {
+      "program": "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+      "stack_height": 3
+    },
+    {
+      "program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+      "stack_height": 3
+    },
+    {
+      "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+      "stack_height": 3
+    },
+    {
+      "program": "MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e",
+      "stack_height": 2
+    }
+  ],
+  "logs": [
+    "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+    "Program ComputeBudget111111111111111111111111111111 success",
+    "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+    "Program ComputeBudget111111111111111111111111111111 success",
+    "Program MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e invoke [1]",
+    "Program log: Instruction: Sell",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P invoke [2]",
+    "Program log: Instruction: Sell",
+    "Program pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ invoke [3]",
+    "Program log: Instruction: GetFees",
+    "Program pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ consumed 3302 of 309643 compute units",
+    "Program return: pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ AAAAAAAAAABfAAAAAAAAAB4AAAAAAAAA",
+    "Program pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ success",
+    "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb invoke [3]",
+    "Program log: Instruction: TransferChecked",
+    "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb consumed 2562 of 302909 compute units",
+    "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb success",
+    "Program data: vdt/007mYe5KEXVfmyddTlYUylwK5e5AsmcVUYRbrZXeW1QGbJDyX92GpQMAAAAAiS+vAzkEAAAAootf0mq0eaapzGy/awsj62GIWjceASCsqRO+7z0TinjfsIBqAAAAADAPOvkCAAAAoXhLxsK6AwAqsZgpAAAAAKHgOHoxvAIA6JMUH7GOnxV02BDheOGeMGBOMXWqLkoy38hgByfRBwkAAAAAAAAAAAAAAAAAAAAA88tFr9EtXYnZBe4+K0DgY6iUTtHrPbGDSimJhgMbUS8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAHNlbGwBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADdhqUDAAAAADAPOvkCAAAAKrGYKQAAAAA=",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P invoke [3]",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P consumed 2125 of 292080 compute units",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P success",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P consumed 58379 of 347206 compute units",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P success",
+    "Program data: MUh7LW5AsIUBootf0mq0eaapzGy/awsj62GIWjceASCsqRO+7z0TinhKEXVfmyddTlYUylwK5e5AsmcVUYRbrZXeW1QGbJDyX92GpQMAAAAAiS+vAzkEAADGhbjMPiwAAEhdYyBvawMA/XzVv////////////////7giY4QPIgAAAAAAAAAAAAAwDzr5AgAAAKF4S8bCugMAbanJZbEQAAAAAAAAAAAAAN+wgGoAAAAAPAKCagAAAAAqsZgpAAAAAKHgOHoxvAIACgAAAOoj3YalAwAAAADGhbjMPiwAAP181b////////////////8wDzr5AgAAAG2pyWWxEAAAAAAAAAAAAAAqsZgpAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "Program MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e invoke [2]",
+    "Program MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e consumed 518 of 281396 compute units",
+    "Program MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e success",
+    "Program MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e consumed 121471 of 399700 compute units",
+    "Program MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e success"
+  ]
+}

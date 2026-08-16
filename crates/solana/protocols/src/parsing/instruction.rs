@@ -265,10 +265,17 @@ impl ParsedInstructionBuilder {
     }
 }
 
+/// One instruction as the wire hands it over, before account indices are
+/// resolved: `(program index, account indices, data, stack height)`.
+///
+/// `stack_height` is `None` on pre-v1.14 transactions, where the runtime did
+/// not report CPI depth; [`parse_instructions`] reads that as top level.
+pub type RawInstruction<'a> = (u8, &'a [u8], Vec<u8>, Option<u32>);
+
 /// Parse a flat list of instructions with log association.
 ///
-/// This implements the stack-based algorithm from the legacy code but
-/// produces a flat vector with parent indices instead of a tree.
+/// Produces a flat vector with parent indices instead of a tree, and hands each
+/// instruction the log slice the runtime emitted for it.
 ///
 /// # Arguments
 ///
@@ -285,16 +292,13 @@ pub fn parse_instructions<'a, I, L>(
     account_keys: &[Pubkey],
 ) -> Vec<ParsedInstruction>
 where
-    I: Iterator<Item = (u8, &'a [u8], Vec<u8>, Option<u32>)>, // (program_id_idx, account_indices, data, stack_height)
+    I: Iterator<Item = RawInstruction<'a>>,
     L: Iterator<Item = &'a str>,
 {
     use super::log::parse_logs;
 
     let mut result: Vec<ParsedInstruction> = Vec::new();
-    let mut log_entries: Vec<LogEntry> = parse_logs(logs);
-    let mut log_iter = log_entries.drain(..).peekable();
-
-    // Stack tracks (instruction_index, stack_height)
+    // Stack of (instruction_index, stack_height) for parent resolution.
     let mut stack: Vec<(usize, u32)> = Vec::new();
 
     for (idx, (program_id_idx, account_indices, data, stack_height)) in instructions.enumerate() {
@@ -309,69 +313,126 @@ where
             .filter_map(|&i| account_keys.get(i as usize).copied())
             .collect();
 
-        // Pop stack until we find parent
-        while let Some(&(_, parent_height)) = stack.last() {
-            if parent_height >= stack_height {
-                // Collect logs for the popped instruction
-                let (popped_idx, _) = stack.pop().unwrap();
-                collect_logs_until_invoke_or_success(&mut log_iter, &mut result[popped_idx].logs);
-            } else {
-                break;
-            }
+        while stack.last().is_some_and(|&(_, h)| h >= stack_height) {
+            stack.pop();
         }
 
-        // Determine parent
-        let parent_index = stack.last().map(|&(idx, _)| idx);
-
-        // Create instruction
         let mut instruction = ParsedInstruction::new(program_id, accounts, data, stack_height, idx);
-        instruction.parent_index = parent_index;
-
-        // Collect initial logs for this instruction
-        collect_logs_until_invoke_or_success(&mut log_iter, &mut instruction.logs);
-
-        let current_idx = result.len();
+        instruction.parent_index = stack.last().map(|&(i, _)| i);
         result.push(instruction);
-        stack.push((current_idx, stack_height));
+        stack.push((idx, stack_height));
     }
 
-    // Drain remaining stack
-    while let Some((popped_idx, _)) = stack.pop() {
-        collect_logs_until_invoke_or_success(&mut log_iter, &mut result[popped_idx].logs);
-    }
-
+    attach_logs(&mut result, parse_logs(logs));
     result
 }
 
-/// Collect logs until we see an Invoke or Success log.
-fn collect_logs_until_invoke_or_success<I>(
-    logs: &mut std::iter::Peekable<I>,
-    target: &mut Vec<LogEntry>,
-) where
-    I: Iterator<Item = LogEntry>,
-{
-    let first_was_invoke = logs
-        .peek()
-        .is_some_and(|l| matches!(l, LogEntry::Invoke { .. }));
-    let mut count = 0;
+/// What a log entry does to the invocation stack.
+///
+/// Extracted before the entry is moved into its owner, and exhaustive so a new
+/// [`LogEntry`] variant has to declare its structural role rather than
+/// defaulting into the body of whatever frame happens to be open.
+enum FrameEffect {
+    /// Opens a new frame for `(program, depth)`.
+    Open(Pubkey, u32),
+    /// Closes the innermost open frame.
+    Close,
+    /// The runtime cut the stream; nothing after it is attributable.
+    Cut,
+    /// Belongs to the innermost open frame.
+    Body,
+}
 
-    while let Some(log) = logs.peek() {
-        let is_invoke = matches!(log, LogEntry::Invoke { .. });
-        let is_success = matches!(log, LogEntry::Success { .. });
+fn frame_effect(entry: &LogEntry) -> FrameEffect {
+    match entry {
+        LogEntry::Invoke { program, depth } => FrameEffect::Open(*program, *depth),
+        LogEntry::Success { .. } | LogEntry::Failed { .. } => FrameEffect::Close,
+        LogEntry::Truncated => FrameEffect::Cut,
+        LogEntry::Data { .. }
+        | LogEntry::Return { .. }
+        | LogEntry::Message { .. }
+        | LogEntry::Consumed { .. }
+        | LogEntry::Unknown { .. } => FrameEffect::Body,
+    }
+}
 
-        // Stop if we hit another invoke (after first) or success (if first was invoke)
-        if (count > 0 && is_invoke) || (first_was_invoke && is_success) {
-            break;
+/// Give every instruction the log slice the runtime emitted for it.
+///
+/// The stream's `invoke` lines are the authority. They appear in execution
+/// order, which is the order the flattened instruction list is built in, so the
+/// nth `invoke` opens the nth instruction — and that correspondence is
+/// **verified** against the instruction's own program and stack height rather
+/// than assumed. Everything between an open and its terminator belongs to that
+/// frame, except regions owned by deeper frames: a child's logs are the child's.
+///
+/// The previous implementation walked positionally without consulting the
+/// program at all, which let one mis-step shift every later window; measured
+/// against mainnet fixtures only 41% of instructions ended up with their own
+/// logs. See `tests/log_attribution.rs`, which pins this.
+///
+/// Two things are deliberately *not* guessed through:
+///
+/// * **Truncation.** Every instruction still awaiting its `invoke` gets a
+///   [`LogEntry::Truncated`] marker, because an empty slice reads as "this
+///   instruction logged nothing" and that is a different claim.
+/// * **Desync.** If an `invoke` names a program the instruction list does not
+///   expect, attribution stops and the remainder is left unattached. Assigning
+///   the rest anyway would produce confident nonsense.
+fn attach_logs(result: &mut [ParsedInstruction], entries: Vec<LogEntry>) {
+    // Instruction indices whose frame is open, innermost last.
+    let mut frames: Vec<usize> = Vec::new();
+    // Next instruction awaiting its `invoke`.
+    let mut cursor = 0usize;
+
+    for entry in entries {
+        match frame_effect(&entry) {
+            FrameEffect::Cut => {
+                if let Some(&top) = frames.last() {
+                    result[top].logs.push(entry);
+                }
+                for ix in result.iter_mut().skip(cursor) {
+                    ix.logs.push(LogEntry::Truncated);
+                }
+                return;
+            }
+            FrameEffect::Open(program, depth) => {
+                let Some(expected) = result.get(cursor) else {
+                    tracing::warn!(
+                        %program,
+                        depth,
+                        "log stream invokes past the last instruction; logs left unattached"
+                    );
+                    return;
+                };
+                if expected.program_id != program || expected.stack_height != depth {
+                    tracing::warn!(
+                        index = cursor,
+                        expected_program = %expected.program_id,
+                        expected_depth = expected.stack_height,
+                        found_program = %program,
+                        found_depth = depth,
+                        "log stream desynced from the instruction list; logs left unattached"
+                    );
+                    return;
+                }
+                result[cursor].logs.push(entry);
+                frames.push(cursor);
+                cursor += 1;
+            }
+            FrameEffect::Close => {
+                let Some(top) = frames.pop() else {
+                    tracing::warn!("program terminator with no open frame; log dropped");
+                    continue;
+                };
+                result[top].logs.push(entry);
+            }
+            FrameEffect::Body => {
+                if let Some(&top) = frames.last() {
+                    result[top].logs.push(entry);
+                }
+                // Otherwise the line precedes every invoke and no frame owns it.
+            }
         }
-
-        let log = logs.next().unwrap();
-        let should_stop = matches!(log, LogEntry::Success { .. });
-        target.push(log);
-
-        if should_stop {
-            break;
-        }
-        count += 1;
     }
 }
 

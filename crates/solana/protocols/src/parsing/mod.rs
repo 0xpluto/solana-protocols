@@ -45,14 +45,20 @@ mod classify;
 pub mod event;
 mod instruction;
 mod log;
+pub mod log_fixture;
 mod registry;
 mod source;
 pub mod state;
 mod traits;
 
 // Layer 1: Generic parsing
-pub use instruction::{parse_instructions, ParsedInstruction, ParsedInstructionBuilder};
+pub use instruction::{
+    parse_instructions, ParsedInstruction, ParsedInstructionBuilder, RawInstruction,
+};
 pub use log::{parse_logs, LogEntry, LogParseError, LogParser, ParsedLog};
+pub use log_fixture::{
+    audit_log_slice, capture_fixture, FixtureError, FixtureInstruction, LogFixture, LogSliceVerdict,
+};
 pub use registry::{
     InstructionParseError, LiquidityAddEvent, LiquidityRemoveEvent, PoolCreationEvent,
     ProtocolEvent, ProtocolParser, ProtocolRegistry, SwapEvent, TokenCreationEvent,

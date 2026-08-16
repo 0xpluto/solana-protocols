@@ -1,0 +1,36 @@
+{
+  "signature": "2HYbDxa2N6veUfsS4fGUVYawaZvTVkEEtaZsF4anv41VjjdQeVFFK4LrfTyV6YhyJGkukYQ8JudVvnpbdMZ7w4yZ",
+  "slot": 439486364,
+  "instructions": [
+    {
+      "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+      "stack_height": 1
+    },
+    {
+      "program": "11111111111111111111111111111111",
+      "stack_height": 2
+    },
+    {
+      "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+      "stack_height": 2
+    },
+    {
+      "program": "11111111111111111111111111111111",
+      "stack_height": 1
+    }
+  ],
+  "logs": [
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P invoke [1]",
+    "Program log: Instruction: CollectCreatorFee",
+    "Program 11111111111111111111111111111111 invoke [2]",
+    "Program 11111111111111111111111111111111 success",
+    "Program data: egJ/AQ6/DK/fsIBqAAAAADT+1H7PjP1Psv69DQtUw+nKI6KN21hDaCPCwbYrE7aGVmFRAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P invoke [2]",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P consumed 2125 of 192255 compute units",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P success",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P consumed 13077 of 203000 compute units",
+    "Program 6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P success",
+    "Program 11111111111111111111111111111111 invoke [1]",
+    "Program 11111111111111111111111111111111 success"
+  ]
+}

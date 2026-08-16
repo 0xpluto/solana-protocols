@@ -1,0 +1,61 @@
+{
+  "signature": "4tmoBPfvBqEDr6gkzin7hckb9UoHggG9443zAA8Mdg1e1GSoJHhhn4ih44rGyFHEeFBphHedhKV58yvSCXMeoyEr",
+  "slot": 439486385,
+  "instructions": [
+    {
+      "program": "ComputeBudget111111111111111111111111111111",
+      "stack_height": 1
+    },
+    {
+      "program": "ComputeBudget111111111111111111111111111111",
+      "stack_height": 1
+    },
+    {
+      "program": "FqGg2Y1FNxMiGd51Q6UETixQWkF5fB92MysbYogRJb3P",
+      "stack_height": 1
+    },
+    {
+      "program": "EZiUb6ydWpR3ciizBTJ1J36KCqLyPKVjh4yZEJbs5Uno",
+      "stack_height": 2
+    },
+    {
+      "program": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "stack_height": 3
+    },
+    {
+      "program": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+      "stack_height": 4
+    },
+    {
+      "program": "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+      "stack_height": 4
+    }
+  ],
+  "logs": [
+    "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+    "Program ComputeBudget111111111111111111111111111111 success",
+    "Program ComputeBudget111111111111111111111111111111 invoke [1]",
+    "Program ComputeBudget111111111111111111111111111111 success",
+    "Program FqGg2Y1FNxMiGd51Q6UETixQWkF5fB92MysbYogRJb3P invoke [1]",
+    "Program log: Instruction: IyfExtensionExecuteV2",
+    "Program EZiUb6ydWpR3ciizBTJ1J36KCqLyPKVjh4yZEJbs5Uno invoke [2]",
+    "Program log: Instruction: MeteoraDlmmRebalanceLiquidityAutomation",
+    "Program LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo invoke [3]",
+    "Program log: Instruction: RebalanceLiquidity",
+    "Program log: process claim fee and reward",
+    "Program log: process removal",
+    "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb invoke [4]",
+    "Program log: Instruction: TransferChecked",
+    "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb consumed 2442 of 166097 compute units",
+    "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb success",
+    "Program LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo invoke [4]",
+    "Program LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo consumed 772 of 160632 compute units",
+    "Program LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo success",
+    "Program LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo consumed 329645 of 488329 compute units",
+    "Program LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo success",
+    "Program EZiUb6ydWpR3ciizBTJ1J36KCqLyPKVjh4yZEJbs5Uno consumed 357398 of 515136 compute units",
+    "Program EZiUb6ydWpR3ciizBTJ1J36KCqLyPKVjh4yZEJbs5Uno success",
+    "Program FqGg2Y1FNxMiGd51Q6UETixQWkF5fB92MysbYogRJb3P consumed 391515 of 548241 compute units",
+    "Program FqGg2Y1FNxMiGd51Q6UETixQWkF5fB92MysbYogRJb3P success"
+  ]
+}
