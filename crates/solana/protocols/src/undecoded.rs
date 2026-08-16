@@ -168,3 +168,82 @@ mod tests {
         assert_eq!(s.discriminator, vec![7]);
     }
 }
+
+/// Write every retained sample to `dir` as a fixture JSON, one file per
+/// `(program, discriminator)`.
+///
+/// This is the point of retaining them. A counter says how much we are
+/// missing; a fixture is what lets someone write the decoder and prove it
+/// against the bytes the chain actually produced — the same standard
+/// `OnchainAccount` and `OnchainInstruction` already enforce, reached from the
+/// firehose instead of a hand-run capture script.
+///
+/// Existing files are not overwritten: the first capture of a shape is the one
+/// a parser was written against, and silently replacing it would move the
+/// goalposts under a passing test.
+///
+/// # Errors
+///
+/// The directory cannot be created or a fixture cannot be written.
+pub fn dump_fixtures(dir: &std::path::Path) -> std::io::Result<usize> {
+    std::fs::create_dir_all(dir)?;
+    let mut written = 0;
+    for s in report_all() {
+        let disc: String = s.discriminator.iter().map(|b| format!("{b:02x}")).collect();
+        let path = dir.join(format!("{}_{}.json", &s.program.to_string()[..8], disc));
+        if path.exists() {
+            continue;
+        }
+        let json = format!(
+            "{{\n  \"program\": \"{}\",\n  \"discriminator\": {:?},\n  \"seen\": {},\n  \
+             \"captured_at\": \"firehose\",\n  \"data_len\": {},\n  \"data_b64\": \"{}\",\n  \
+             \"accounts\": [{}]\n}}\n",
+            s.program,
+            s.discriminator,
+            s.seen,
+            s.data.len(),
+            base64_encode(&s.data),
+            s.accounts
+                .iter()
+                .map(|a| format!("\"{a}\""))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        std::fs::write(&path, json)?;
+        written += 1;
+    }
+    Ok(written)
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(bytes)
+}
+
+#[cfg(test)]
+mod dump_tests {
+    use super::*;
+
+    #[test]
+    fn samples_land_as_fixtures_and_are_not_overwritten() {
+        let dir = std::env::temp_dir().join(format!("undec_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let program = Pubkey::new_unique();
+        report(
+            &program,
+            &[3, 1, 4, 1, 5, 9, 2, 6, 0xAA],
+            &[Pubkey::new_unique()],
+            "t",
+        );
+
+        let n = dump_fixtures(&dir).expect("dump");
+        assert!(n >= 1);
+        let before = std::fs::read_dir(&dir).unwrap().count();
+
+        // A second dump must not rewrite what a parser may already be pinned to.
+        let again = dump_fixtures(&dir).expect("dump again");
+        assert_eq!(again, 0, "existing fixtures must not be overwritten");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), before);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
