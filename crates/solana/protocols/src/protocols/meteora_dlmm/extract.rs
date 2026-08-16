@@ -190,6 +190,8 @@ fn extract_swap(
     };
 
     Some(ChainEvent::Swap(Swap {
+        // No such argument on this protocol.
+        track_volume: crate::protocols::OptionBool::None,
         instruction: crate::swap_instruction::resolve(&outer.program_id, &outer.data),
         protocol: Protocol::MeteoraDlmm,
         pool: common.lb_pair,

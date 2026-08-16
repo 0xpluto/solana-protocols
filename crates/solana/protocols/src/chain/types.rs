@@ -335,6 +335,21 @@ pub struct Swap {
     /// averages several different formulas into one. See
     /// [`SwapInstruction`](crate::swap_instruction::SwapInstruction).
     pub instruction: crate::swap_instruction::SwapInstruction,
+    /// Whether the instruction asked the program to track volume, as it
+    /// appeared on the wire.
+    ///
+    /// A pump-family argument, so [`OptionBool::None`] on every other
+    /// protocol — and there it means "this protocol has no such argument",
+    /// which is why the column is nullable downstream rather than defaulted
+    /// to false.
+    ///
+    /// Recorded because it is not cosmetic: the flag adds an account to the
+    /// instruction (28 vs 27 on `buy_exact_quote_in_v2`, measured over 1,050
+    /// live instructions), so it should move compute, and that is only
+    /// checkable if the flag rides the same row as `compute_used`.
+    ///
+    /// [`OptionBool::None`]: crate::protocols::OptionBool::None
+    pub track_volume: crate::protocols::OptionBool,
     /// Bonding curve, AMM pool, or CLMM pool — whichever primitive
     /// holds reserves for this protocol.
     pub pool: Pubkey,
@@ -561,6 +576,7 @@ mod tests {
     fn sample_swap() -> Swap {
         // Buy: trader paid WSOL (token_in), received mint token (token_out).
         Swap {
+            track_volume: crate::protocols::OptionBool::None,
             instruction: crate::swap_instruction::SwapInstruction::Unknown([0; 8]),
             protocol: Protocol::Pumpfun,
             pool: pk(0x01),

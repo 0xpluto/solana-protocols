@@ -420,3 +420,46 @@ mod tests {
         assert_eq!(instructions[1].program_id, PROGRAM_ID);
     }
 }
+
+#[cfg(test)]
+mod trailing_arg {
+    use super::*;
+    use crate::protocols::OptionBool;
+
+    /// The real wire shapes, from 1,050 v2 instructions captured 2026-08-12.
+    ///
+    /// `buy_exact_quote_in_v2` carries a `track_volume` byte the IDL does not
+    /// declare: 17 arg bytes with a trailing `[1]` (113 samples, 28 accounts)
+    /// against 16 with nothing (362 samples, 27 accounts). Decoding it is what
+    /// makes "did this trade opt into volume tracking" answerable — and that
+    /// flag adds an account, so it should move compute too.
+    #[test]
+    fn the_trailing_byte_is_decoded_as_track_volume() {
+        let mut args = Vec::new();
+        args.extend_from_slice(&1_000_000u64.to_le_bytes());
+        args.extend_from_slice(&42u64.to_le_bytes());
+
+        // The dominant shape: no trailing byte at all.
+        let absent = BuyExactInParams::from_instruction_data(&args).expect("16-byte form");
+        assert_eq!(absent.track_volume, OptionBool::None);
+        assert_eq!(absent.spendable_in, 1_000_000);
+
+        // The 25-byte shape. Always [1] on chain — [0] is never sent, because
+        // omitting the argument already means false.
+        let mut with_flag = args.clone();
+        with_flag.push(1);
+        let present = BuyExactInParams::from_instruction_data(&with_flag).expect("17-byte form");
+        assert_eq!(present.track_volume, OptionBool::SomeTrue);
+        assert_eq!(present.track_volume.requested(), Some(true));
+        assert_eq!(present.min_tokens_out, 42);
+    }
+
+    /// An encoding never seen on chain is refused rather than guessed at, so a
+    /// new convention announces itself instead of being silently coerced.
+    #[test]
+    fn an_unknown_trailing_encoding_is_refused() {
+        let mut args = vec![0u8; 16];
+        args.extend_from_slice(&[7, 7, 7]);
+        assert!(BuyExactInParams::from_instruction_data(&args).is_err());
+    }
+}

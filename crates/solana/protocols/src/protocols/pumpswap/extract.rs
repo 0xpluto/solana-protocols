@@ -118,6 +118,8 @@ fn extract_buy(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<Chai
     let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee.unwrap_or(0);
 
     Some(ChainEvent::Swap(Swap {
+        // No such argument on this protocol.
+        track_volume: crate::protocols::OptionBool::None,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::PumpSwap,
         pool: accounts.pool,
@@ -169,6 +171,8 @@ fn extract_sell(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<Cha
     let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee.unwrap_or(0);
 
     Some(ChainEvent::Swap(Swap {
+        // No such argument on this protocol.
+        track_volume: crate::protocols::OptionBool::None,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::PumpSwap,
         pool: accounts.pool,

@@ -201,6 +201,19 @@ fn extract_swap(
         };
 
     Some(ChainEvent::Swap(Swap {
+        // Read off the instruction rather than defaulted: on
+        // `buy_exact_quote_in_v2` this is an argument the IDL does not declare,
+        // and it is the only record that the trade opted in.
+        track_volume: match pumpfun_ix {
+            PumpfunInstruction::Buy(p) | PumpfunInstruction::BuyV2(p) => p.track_volume,
+            PumpfunInstruction::BuyExactSolIn(p) | PumpfunInstruction::BuyExactQuoteInV2(p) => {
+                p.track_volume
+            }
+            PumpfunInstruction::Sell(_)
+            | PumpfunInstruction::SellV2(_)
+            | PumpfunInstruction::Create(_)
+            | PumpfunInstruction::CreateV2(_) => crate::protocols::OptionBool::None,
+        },
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::Pumpfun,
         pool,

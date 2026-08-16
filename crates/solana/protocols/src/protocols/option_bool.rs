@@ -49,9 +49,11 @@
 //!
 //! Two further facts fall out of that sample:
 //!
-//! * The trailing byte is **always `[1]`**, never `[0]`. Sending false is
-//!   equivalent to omitting the argument, so clients omit it — which is why
-//!   the absent form dominates and why absent must not be read as false.
+//! * On `buy_exact_quote_in_v2` the trailing byte is always `[1]`, never
+//!   `[0]`. That is **not** true of the family: pumpfun's v1 `buy` sends all
+//!   three forms — 945 absent, 477 `[0]`, 164 `[1]` in one 150s window. So
+//!   `[0]` is genuinely used, and absent must not be read as false, and no
+//!   single instruction's distribution generalises to the others.
 //! * `buy_exact_quote_in_v2` **does** take this argument, and neither the
 //!   vendored nor the freshly-fetched on-chain IDL declares it. The IDL is
 //!   incomplete for that instruction. Trailing bytes here are semantic, not
