@@ -34,10 +34,29 @@
 //! *countable*: the encoding a sender chose is a fingerprint of their tooling,
 //! so an anomaly here is data rather than an error.
 //!
-//! It is not cosmetic. On the buy instructions the flag changes which accounts
-//! the program expects — the volume accumulators — so a builder that guesses
-//! the encoding can emit an instruction whose account list contradicts its own
-//! arguments.
+//! It is not cosmetic, and this is measured rather than assumed. Over 1,050 v2
+//! instructions captured from the firehose 2026-08-12:
+//!
+//! ```text
+//! buy_exact_quote_in_v2   24 bytes, 27 accounts, no trailing   x362
+//! buy_exact_quote_in_v2   25 bytes, 28 accounts, trailing [1]  x113
+//! ```
+//!
+//! The correlation is perfect: the flag present and true adds an account. So
+//! the argument changes the account list the program requires, and a builder
+//! that guesses the encoding can emit an instruction whose accounts contradict
+//! its own arguments.
+//!
+//! Two further facts fall out of that sample:
+//!
+//! * The trailing byte is **always `[1]`**, never `[0]`. Sending false is
+//!   equivalent to omitting the argument, so clients omit it — which is why
+//!   the absent form dominates and why absent must not be read as false.
+//! * `buy_exact_quote_in_v2` **does** take this argument, and neither the
+//!   vendored nor the freshly-fetched on-chain IDL declares it. The IDL is
+//!   incomplete for that instruction. Trailing bytes here are semantic, not
+//!   junk: rejecting them outright would drop ~11% of these instructions and
+//!   lose the flag they carry.
 
 /// The wire forms of `track_volume` observed on mainnet.
 ///
