@@ -7,10 +7,10 @@
 //! satisfiable, so this fails to *compile* rather than failing quietly at
 //! runtime when a pool turns out to be unquotable.
 
+use solana_account_cache::{LocalCache, LocalCacheConfig};
 use solana_protocols::protocols::Protocol;
 use solana_protocols::quote::{NotQuotable, QuoteState};
 use solana_pubkey::Pubkey;
-use solana_account_cache::{LocalCache, LocalCacheConfig};
 
 /// Compile-time proof: `LocalCache` can assemble every ported protocol.
 #[test]

@@ -21,13 +21,13 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
+use solana_account_traits::{impl_cache_access, CacheSingleton};
 use solana_protocols::meteora_dlmm::{BinArray, BinArrayBitmapExtension, LbPair, PositionV2Full};
 use solana_protocols::pumpfun::{BondingCurve, PumpfunFeeConfig, PumpfunFeeRecipients};
 use solana_protocols::pumpswap::{PumpSwapFeeConfig, PumpSwapPool};
 use solana_protocols::tokens::TokenAccount;
 use solana_protocols::TokenProgram;
 use solana_pubkey::Pubkey;
-use solana_account_traits::{impl_cache_access, CacheSingleton};
 
 use crate::persist::{self, CacheError};
 use crate::versioned_map::VersionedStateMap;
@@ -468,8 +468,8 @@ impl CacheSingleton<PumpfunFeeConfig> for LocalCache {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use solana_protocols::parsing::state::Legacy;
     use solana_account_traits::{CacheGet, CacheInsert};
+    use solana_protocols::parsing::state::Legacy;
     use tempfile::tempdir;
 
     fn pk(byte: u8) -> Pubkey {
@@ -691,10 +691,10 @@ mod tests {
     /// PumpSwap's fee tiers. Reverting that routing turns this test red.
     #[test]
     fn pumpswap_fee_config_does_not_overwrite_pumpfun_singleton() {
+        use solana_account_traits::{CacheSingleton, HandlerRegistry};
         use solana_protocols::pumpfun::handler::PumpfunFeeConfigHandler;
         use solana_protocols::pumpfun::{FEE_CONFIG_PDA, PUMP_FEES_PROGRAM_ID};
         use solana_protocols::pumpswap::FEE_CONFIG as PUMPSWAP_FEE_CONFIG;
-        use solana_account_traits::{CacheSingleton, HandlerRegistry};
 
         let cache = LocalCache::new(LocalCacheConfig::default());
         let mut registry: HandlerRegistry<LocalCache> = HandlerRegistry::new();
@@ -739,9 +739,9 @@ mod tests {
     /// over either slot we do model.
     #[test]
     fn unrouted_fee_config_pda_overwrites_nothing() {
+        use solana_account_traits::{CacheSingleton, HandlerRegistry};
         use solana_protocols::pumpfun::handler::PumpfunFeeConfigHandler;
         use solana_protocols::pumpfun::{FEE_CONFIG_PDA, PUMP_FEES_PROGRAM_ID};
-        use solana_account_traits::{CacheSingleton, HandlerRegistry};
 
         let cache = LocalCache::new(LocalCacheConfig::default());
         let mut registry: HandlerRegistry<LocalCache> = HandlerRegistry::new();
@@ -808,8 +808,8 @@ mod tests {
 
     #[test]
     fn pumpfun_handler_parses_account_update_and_writes_into_local_cache() {
-        use solana_protocols::pumpfun::{handler::PumpfunBondingCurveHandler, PROGRAM_ID};
         use solana_account_traits::HandlerRegistry;
+        use solana_protocols::pumpfun::{handler::PumpfunBondingCurveHandler, PROGRAM_ID};
 
         let cache = LocalCache::new(LocalCacheConfig::default());
         let mut registry: HandlerRegistry<LocalCache> = HandlerRegistry::new();
@@ -844,8 +844,8 @@ mod tests {
 
     #[test]
     fn pumpfun_handler_rejects_wrong_discriminator_via_registry() {
-        use solana_protocols::pumpfun::{handler::PumpfunBondingCurveHandler, PROGRAM_ID};
         use solana_account_traits::{HandlerError, HandlerRegistry};
+        use solana_protocols::pumpfun::{handler::PumpfunBondingCurveHandler, PROGRAM_ID};
 
         let cache = LocalCache::new(LocalCacheConfig::default());
         let mut registry: HandlerRegistry<LocalCache> = HandlerRegistry::new();
@@ -863,8 +863,8 @@ mod tests {
 
     #[test]
     fn pumpfun_handler_advances_history_on_subsequent_slot_updates() {
-        use solana_protocols::pumpfun::{handler::PumpfunBondingCurveHandler, PROGRAM_ID};
         use solana_account_traits::HandlerRegistry;
+        use solana_protocols::pumpfun::{handler::PumpfunBondingCurveHandler, PROGRAM_ID};
 
         let cache = LocalCache::new(LocalCacheConfig::default());
         let mut registry: HandlerRegistry<LocalCache> = HandlerRegistry::new();
@@ -899,10 +899,10 @@ mod tests {
 
     #[test]
     fn singleton_traits_roundtrip_through_local_cache() {
+        use solana_account_traits::CacheSingleton;
         use solana_protocols::pumpfun::{
             PumpfunFeeConfig, PumpfunFeeRecipients, PumpfunFeeTier, PumpfunFees,
         };
-        use solana_account_traits::CacheSingleton;
 
         let cache = LocalCache::new(LocalCacheConfig::default());
 
@@ -948,8 +948,8 @@ mod tests {
 
     #[test]
     fn singleton_state_clones_across_handles() {
-        use solana_protocols::pumpfun::PumpfunFeeRecipients;
         use solana_account_traits::CacheSingleton;
+        use solana_protocols::pumpfun::PumpfunFeeRecipients;
 
         let a = LocalCache::new(LocalCacheConfig::default());
         let b = a.clone();

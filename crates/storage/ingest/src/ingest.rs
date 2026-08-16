@@ -22,8 +22,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use solana_pubkey::Pubkey;
 use solana_account_traits::{DeliveryExpectation, HandleResult, HandlerError, HandlerRegistry};
+use solana_pubkey::Pubkey;
 use tokio::sync::mpsc;
 use tracing::warn;
 
@@ -213,10 +213,10 @@ fn fetch_targets(result: &HandleResult) -> impl Iterator<Item = Pubkey> + '_ {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use solana_account_traits::{Dependency, ProtocolStateHandler, StorageHandler};
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
     use std::sync::Mutex;
-    use solana_account_traits::{Dependency, ProtocolStateHandler, StorageHandler};
 
     use crate::FetchError;
 

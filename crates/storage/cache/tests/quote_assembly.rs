@@ -12,9 +12,9 @@
 //! green while making the live quote path uncallable — so this file fails to
 //! *compile* instead.
 
+use solana_account_cache::{LocalCache, LocalCacheConfig};
 use solana_protocols::pumpswap::quote::PumpSwapQuote;
 use solana_pubkey::Pubkey;
-use solana_account_cache::{LocalCache, LocalCacheConfig};
 
 /// Compile-time proof: `LocalCache` satisfies the assembly bound.
 ///
