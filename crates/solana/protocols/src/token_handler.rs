@@ -24,10 +24,10 @@
 //!
 //! Only compiled when the `cache-handlers` feature is enabled.
 
-use solana_program::pubkey::Pubkey;
 use solana_account_traits::{
     CacheInsert, HandleResult, HandlerError, ProtocolStateHandler, StorageHandler,
 };
+use solana_program::pubkey::Pubkey;
 
 use crate::tokens::{TokenAccount, TokenProgram, TOKEN_ACCOUNT_BASE_LEN};
 

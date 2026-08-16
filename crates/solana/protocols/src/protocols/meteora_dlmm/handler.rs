@@ -8,9 +8,9 @@
 //!
 //! Only compiled when the `cache-handlers` feature is enabled.
 
+use solana_account_traits::{CacheInsert, HandleResult, HandlerError, StorageHandler};
 use solana_program::pubkey::Pubkey;
 use solana_protocols_macros::OnchainAccount;
-use solana_account_traits::{CacheInsert, HandleResult, HandlerError, StorageHandler};
 
 use super::constants::{
     BIN_ARRAY_BITMAP_EXTENSION_DISCRIMINATOR, BIN_ARRAY_DISCRIMINATOR, LB_PAIR_DISCRIMINATOR,

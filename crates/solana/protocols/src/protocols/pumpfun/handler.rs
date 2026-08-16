@@ -16,9 +16,11 @@
 //!
 //! Only compiled when the `cache-handlers` feature is enabled.
 
+use solana_account_traits::{
+    CacheInsert, CacheSingleton, HandleResult, HandlerError, StorageHandler,
+};
 use solana_program::pubkey::Pubkey;
 use solana_protocols_macros::OnchainAccount;
-use solana_account_traits::{CacheInsert, CacheSingleton, HandleResult, HandlerError, StorageHandler};
 
 use super::super::pumpswap::{PumpSwapFeeConfig, FEE_CONFIG as PUMPSWAP_FEE_CONFIG};
 use super::constants::{
