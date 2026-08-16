@@ -454,12 +454,44 @@ mod trailing_arg {
         assert_eq!(present.min_tokens_out, 42);
     }
 
-    /// An encoding never seen on chain is refused rather than guessed at, so a
-    /// new convention announces itself instead of being silently coerced.
+    /// A trailer we cannot attribute is retained, not refused.
+    ///
+    /// This test asserted the opposite until 2026-08-15, when mainnet produced
+    /// a `buy_exact_sol_in` carrying eight zero bytes. The program accepted it,
+    /// so it is a valid instruction and refusing it made us wrong about the
+    /// chain — the bytes are unexplained, which is a different thing from the
+    /// instruction being malformed. They are kept verbatim so the sender's
+    /// encoding stays queryable, and the flag stays unresolved.
     #[test]
-    fn an_unknown_trailing_encoding_is_refused() {
+    fn an_unattributed_trailer_is_retained_with_the_flag_unresolved() {
         let mut args = vec![0u8; 16];
         args.extend_from_slice(&[7, 7, 7]);
+        let p = BuyExactInParams::from_instruction_data(&args).expect("valid with a trailer");
+        assert_eq!(p.track_volume.unattributed(), Some([7, 7, 7].as_slice()));
+        assert_eq!(p.track_volume.requested(), None);
+    }
+
+    /// The exact mainnet bytes, discriminator stripped: two `u64` arguments
+    /// then eight zero bytes.
+    #[test]
+    fn the_observed_mainnet_buy_exact_sol_in_decodes() {
+        let mut args = 1_000_000u64.to_le_bytes().to_vec();
+        args.extend_from_slice(&1u64.to_le_bytes());
+        args.extend_from_slice(&[0u8; 8]);
+        let p = BuyExactInParams::from_instruction_data(&args).expect("mainnet form decodes");
+        assert_eq!(p.spendable_in, 1_000_000);
+        assert_eq!(p.min_tokens_out, 1);
+        assert_eq!(p.track_volume.unattributed(), Some([0u8; 8].as_slice()));
+        assert_eq!(p.track_volume.requested(), None);
+    }
+
+    /// The refusal still exists, one bound further out: a trailer too long to
+    /// hold inline would make the retained bytes a partial record, so it stays
+    /// an error and lands in the undecoded sink with its bytes.
+    #[test]
+    fn a_trailer_past_the_inline_bound_is_still_refused() {
+        let mut args = vec![0u8; 16];
+        args.extend_from_slice(&[7u8; crate::protocols::Trailer::MAX + 1]);
         assert!(BuyExactInParams::from_instruction_data(&args).is_err());
     }
 }

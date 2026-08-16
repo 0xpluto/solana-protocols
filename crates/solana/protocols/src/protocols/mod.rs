@@ -34,7 +34,7 @@
 //! - `InstructionBuilder` - Build Solana instructions
 
 pub mod option_bool;
-pub use option_bool::{OptionBool, UnknownOptionBool};
+pub use option_bool::{OptionBool, Trailer, UnknownOptionBool};
 
 pub mod pumpfun;
 pub mod pumpswap;
