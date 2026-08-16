@@ -1,4 +1,10 @@
-# Clippy configuration — the machine-checkable half of docs/code-doctrine.md.
+# Clippy configuration for the published crates.
+#
+# Kept alongside the other mirror assets rather than copied from the private
+# workspace root, because that file configures crates that are not published —
+# its `doc-valid-idents` listed venues this codebase has nothing to do with, and
+# the extractor shipped the list verbatim. A config file is repo content: it says
+# what its author works on.
 #
 # A rule that fails the build is one nobody has to remember. Everything here
 # maps to a numbered doctrine section; if you are about to add an entry, add the
@@ -34,7 +40,4 @@ disallowed-methods = [
 
 # Doc-comment quality gate for §7.5 — names that look like code but are not
 # backticked read as prose and rot silently.
-doc-valid-idents = [
-    "USDC", "USDT", "USD₮0", "EIP", "ERC", "LayerZero", "RISEx", "dYdX",
-    "Hyperliquid", "Solana", "OFT", "IOC", "BBO", "APR", "P&L", "..",
-]
+doc-valid-idents = ["USDC", "USDT", "Solana", ".."]
