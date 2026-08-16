@@ -153,12 +153,25 @@ pub fn total() -> u64 {
     TOTAL.load(Ordering::Relaxed)
 }
 
+/// `CAPTURE` is process-global, so a test that turns it off runs concurrently
+/// with — and silently disarms — every test that needs it on. Samples are
+/// already isolated (each test uses a fresh program id); the flag is not.
+///
+/// The guard recovers from poisoning: one panicking test must fail alone, not
+/// take the rest of the module with it.
+#[cfg(test)]
+pub(crate) fn capture_lock() -> std::sync::MutexGuard<'static, ()> {
+    static L: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    L.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn the_first_sample_is_kept_and_repeats_are_counted() {
+        let _serialized = capture_lock();
         enable_capture();
         let program = Pubkey::new_unique();
         let a = vec![Pubkey::new_unique()];
@@ -182,6 +195,7 @@ mod tests {
     /// a decoder must handle and what an incomplete IDL hides.
     #[test]
     fn one_instruction_in_two_shapes_is_two_samples() {
+        let _serialized = capture_lock();
         enable_capture();
         let program = Pubkey::new_unique();
         let disc = [4u8; 8];
@@ -211,6 +225,7 @@ mod tests {
     /// not depend on a flag — but no bodies are held.
     #[test]
     fn the_tally_works_with_capture_disabled() {
+        let _serialized = capture_lock();
         CAPTURE.store(false, Ordering::Relaxed);
         let program = Pubkey::new_unique();
         let before = total();
@@ -220,11 +235,14 @@ mod tests {
             !report_all().iter().any(|s| s.program == program),
             "no body retained while capture is off"
         );
+        // Restore the flag for everyone else; the guard above is still held,
+        // so no concurrent test observed it off.
         enable_capture();
     }
 
     #[test]
     fn different_discriminators_are_separate_samples() {
+        let _serialized = capture_lock();
         enable_capture();
         let program = Pubkey::new_unique();
         report(&program, &[1; 8], &[], "a");
@@ -239,6 +257,7 @@ mod tests {
     /// truncated instruction is exactly the kind of thing worth seeing.
     #[test]
     fn a_short_instruction_is_still_retained() {
+        let _serialized = capture_lock();
         enable_capture();
         let program = Pubkey::new_unique();
         report(&program, &[7], &[], "short");
@@ -307,6 +326,7 @@ mod dump_tests {
 
     #[test]
     fn samples_land_as_fixtures_and_are_not_overwritten() {
+        let _serialized = capture_lock();
         enable_capture();
         let dir = std::env::temp_dir().join(format!("undec_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
