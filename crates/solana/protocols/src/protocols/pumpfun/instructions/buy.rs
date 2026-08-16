@@ -26,6 +26,7 @@ use super::super::constants::{
 /// creator) is not present in the instruction — the self-contained replay can't
 /// recover it, so we take it as given.
 #[derive(Debug, Clone, AccountMetas, BuildAccounts, OnchainInstruction)]
+#[idl(program = "pump", instruction = "buy")]
 #[build(fixture = "pumpfun/ix_buy.json")]
 #[onchain_ix(fixture = "pumpfun/ix_buy.json")]
 pub struct BuyAccounts {
@@ -38,7 +39,7 @@ pub struct BuyAccounts {
     /// (the fixture buy used `reserved_fee_recipient`, not `fee_recipients\[0\]`).
     #[account(writable)]
     #[build(input)]
-    pub fee_collector: Pubkey,
+    pub fee_recipient: Pubkey,
     /// Token mint.
     #[account]
     #[build(input)]
@@ -272,12 +273,12 @@ impl BuyBuilder {
         keys: &PumpfunKeys,
         user: &Pubkey,
         token_program: crate::tokens::TokenProgram,
-        fee_collector: Pubkey,
+        fee_recipient: Pubkey,
         token_amount: u64,
         max_sol_cost: u64,
     ) -> Instruction {
         let accounts = BuyAccounts::derive(
-            fee_collector,
+            fee_recipient,
             keys.mint,
             *user,
             token_program.id(),

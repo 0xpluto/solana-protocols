@@ -63,6 +63,7 @@ use proc_macro::TokenStream;
 mod account_metas;
 mod build_accounts;
 mod discriminator;
+mod idl_check;
 mod instruction_data;
 mod log_parser;
 mod onchain_account;
@@ -213,7 +214,7 @@ pub fn derive_instruction_data(input: TokenStream) -> TokenStream {
 ///     #[account]
 ///     pub global: Pubkey,
 ///     #[account(writable)]
-///     pub fee_collector: Pubkey,
+///     pub fee_recipient: Pubkey,
 ///     #[account(writable, signer)]
 ///     pub user: Pubkey,
 /// }
@@ -221,7 +222,7 @@ pub fn derive_instruction_data(input: TokenStream) -> TokenStream {
 /// let accounts = BuyAccounts { ... };
 /// let metas = accounts.to_account_metas();
 /// ```
-#[proc_macro_derive(AccountMetas, attributes(account))]
+#[proc_macro_derive(AccountMetas, attributes(account, idl))]
 pub fn derive_account_metas(input: TokenStream) -> TokenStream {
     account_metas::derive(input)
 }

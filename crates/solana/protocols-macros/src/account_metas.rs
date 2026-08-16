@@ -37,6 +37,51 @@ pub fn derive(input: TokenStream) -> TokenStream {
         Err(e) => return e.write_errors().into(),
     };
 
+    // Verify the declared account order against the program's own IDL before
+    // generating anything. This is the one fact about an instruction we cannot
+    // derive — a discriminator comes from the name, a PDA from its seeds, but
+    // "account 12 is the pool's quote vault" is data — so the IDL is the
+    // authority and disagreeing with it must not compile.
+    for attr in &input.attrs {
+        if !attr.path().is_ident("idl") {
+            continue;
+        }
+        let (mut program, mut instruction) = (None, None);
+        if let Err(e) = attr.parse_nested_meta(|m| {
+            if m.path.is_ident("program") {
+                program = Some(m.value()?.parse::<syn::LitStr>()?.value());
+            } else if m.path.is_ident("instruction") {
+                instruction = Some(m.value()?.parse::<syn::LitStr>()?.value());
+            } else {
+                return Err(m.error("expected program = \"…\" and instruction = \"…\""));
+            }
+            Ok(())
+        }) {
+            return e.to_compile_error().into();
+        }
+        let (Some(program), Some(instruction)) = (program, instruction) else {
+            return syn::Error::new_spanned(
+                attr,
+                "#[idl(...)] needs both program = \"…\" and instruction = \"…\"",
+            )
+            .to_compile_error()
+            .into();
+        };
+        let field_names: Vec<String> = match &input.data {
+            syn::Data::Struct(s) => s
+                .fields
+                .iter()
+                .filter_map(|f| f.ident.as_ref().map(ToString::to_string))
+                .collect(),
+            _ => Vec::new(),
+        };
+        if let Err(msg) = crate::idl_check::check_accounts(&program, &instruction, &field_names) {
+            return syn::Error::new_spanned(&input.ident, msg)
+                .to_compile_error()
+                .into();
+        }
+    }
+
     let expanded = generate_impl(&args);
     expanded.into()
 }

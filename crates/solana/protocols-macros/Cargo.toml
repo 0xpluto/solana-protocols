@@ -17,6 +17,8 @@ proc-macro = true
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "parsing", "extra-traits"] }
+# Reading vendored IDLs at macro-expansion time to verify account layouts.
+serde_json = "1"
 
 # For parsing attributes
 darling = "0.21"

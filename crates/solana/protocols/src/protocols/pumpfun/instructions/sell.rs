@@ -23,6 +23,7 @@ use super::super::constants::{
 /// Note sell has no volume-accumulator accounts, and `creator_vault` precedes
 /// `token_program` (opposite of buy) — pinned by the fixture.
 #[derive(Debug, Clone, AccountMetas, BuildAccounts, OnchainInstruction)]
+#[idl(program = "pump", instruction = "sell")]
 #[build(fixture = "pumpfun/ix_sell.json")]
 #[onchain_ix(fixture = "pumpfun/ix_sell.json")]
 pub struct SellAccounts {
@@ -34,7 +35,7 @@ pub struct SellAccounts {
     /// used `fee_recipients\[0\]`; the fixture buy used `reserved_fee_recipient`).
     #[account(writable)]
     #[build(input)]
-    pub fee_collector: Pubkey,
+    pub fee_recipient: Pubkey,
     /// Token mint.
     #[account]
     #[build(input)]
@@ -200,12 +201,12 @@ impl SellBuilder {
         keys: &PumpfunKeys,
         user: &Pubkey,
         token_program: crate::tokens::TokenProgram,
-        fee_collector: Pubkey,
+        fee_recipient: Pubkey,
         token_amount: u64,
         min_sol_output: u64,
     ) -> Instruction {
         let accounts = SellAccounts::derive(
-            fee_collector,
+            fee_recipient,
             keys.mint,
             *user,
             keys.creator_vault,
