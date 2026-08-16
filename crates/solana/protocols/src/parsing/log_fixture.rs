@@ -27,6 +27,7 @@
 
 use std::collections::HashSet;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
@@ -246,6 +247,84 @@ pub fn audit_log_slice(ix: &ParsedInstruction) -> LogSliceVerdict {
 }
 
 // ---------------------------------------------------------------------------
+// Deep audit
+// ---------------------------------------------------------------------------
+
+/// Per-verdict tally, indexed by [`LogSliceVerdict`]'s discriminant order.
+static VERDICTS: [AtomicU64; 8] = [
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+];
+
+fn verdict_slot(v: &LogSliceVerdict) -> usize {
+    match v {
+        LogSliceVerdict::Ok => 0,
+        LogSliceVerdict::Truncated => 1,
+        LogSliceVerdict::Empty => 2,
+        LogSliceVerdict::ForeignOpen { .. } => 3,
+        LogSliceVerdict::NotOpened => 4,
+        LogSliceVerdict::DepthMismatch { .. } => 5,
+        LogSliceVerdict::InteriorInvoke => 6,
+        LogSliceVerdict::Unterminated => 7,
+    }
+}
+
+/// Human label for each slot, in the same order.
+pub const VERDICT_LABELS: [&str; 8] = [
+    "ok",
+    "truncated",
+    "empty",
+    "foreign_open",
+    "not_opened",
+    "depth_mismatch",
+    "interior_invoke",
+    "unterminated",
+];
+
+fn deep_audit_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("AUDIT_LOG_SLICES").is_some())
+}
+
+/// Audit every instruction's slice against the full bracket invariant.
+///
+/// The always-on counters in [`attribution_stats`](super::attribution_stats)
+/// only witness the *opening* of each slice — that the nth `invoke` named the
+/// nth instruction's program at its depth. They say nothing about the interior
+/// or the terminator, which the walk guarantees *structurally*; this is how
+/// that guarantee gets checked against traffic instead of argued from the code.
+///
+/// Opt-in via `AUDIT_LOG_SLICES=1`, because it re-scans every slice and the
+/// production answer to "is attribution healthy" is already free.
+pub fn deep_audit(instructions: &[ParsedInstruction]) -> Option<&'static str> {
+    if !deep_audit_enabled() {
+        return None;
+    }
+    let mut imperfect = None;
+    for ix in instructions {
+        let slot = verdict_slot(&audit_log_slice(ix));
+        VERDICTS[slot].fetch_add(1, Ordering::Relaxed);
+        // Slots 0 and 1 are Ok and Truncated; the rest are ours to explain.
+        if slot > 1 && imperfect.is_none() {
+            imperfect = Some(VERDICT_LABELS[slot]);
+        }
+    }
+    imperfect
+}
+
+/// Snapshot of the deep audit, aligned with [`VERDICT_LABELS`].
+#[must_use]
+pub fn deep_audit_tally() -> [u64; 8] {
+    std::array::from_fn(|i| VERDICTS[i].load(Ordering::Relaxed))
+}
+
+// ---------------------------------------------------------------------------
 // Capture
 // ---------------------------------------------------------------------------
 
@@ -282,14 +361,18 @@ fn capture_dir() -> Option<&'static Path> {
 pub fn capture_fixture(
     signature: &str,
     slot: u64,
-    instructions: &[(Pubkey, u32)],
+    instructions: &[ParsedInstruction],
     logs: &[String],
 ) {
     let Some(dir) = capture_dir() else {
         return;
     };
-    let programs: HashSet<Pubkey> = instructions.iter().map(|(p, _)| *p).collect();
-    let depth = instructions.iter().map(|(_, d)| *d).max().unwrap_or(0);
+    let programs: HashSet<Pubkey> = instructions.iter().map(|i| i.program_id).collect();
+    let depth = instructions
+        .iter()
+        .map(|i| i.stack_height)
+        .max()
+        .unwrap_or(0);
     if programs.len() < 2 || depth < 2 {
         return;
     }
@@ -303,14 +386,70 @@ pub fn capture_fixture(
         }
     }
 
+    write_fixture(
+        dir,
+        &format!("logs_{}programs_depth{depth}.json", key.0),
+        signature,
+        slot,
+        instructions,
+        logs,
+    );
+}
+
+/// Keep a transaction whose attribution came out imperfect, one per verdict kind.
+///
+/// A counter says *how often* attribution fell short; only the transaction says
+/// *why*. Without this the residual stays a number nobody can chase, which is how
+/// a 0.01% tail lives forever.
+pub fn capture_imperfect(
+    verdict: &str,
+    signature: &str,
+    slot: u64,
+    instructions: &[ParsedInstruction],
+    logs: &[String],
+) {
+    let Some(dir) = capture_dir() else {
+        return;
+    };
+    {
+        let Ok(mut seen) = captured_verdicts().lock() else {
+            return;
+        };
+        if !seen.insert(verdict.to_string()) {
+            return;
+        }
+    }
+    write_fixture(
+        dir,
+        &format!("imperfect_{verdict}.json"),
+        signature,
+        slot,
+        instructions,
+        logs,
+    );
+}
+
+fn captured_verdicts() -> &'static std::sync::Mutex<HashSet<String>> {
+    static S: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> = std::sync::OnceLock::new();
+    S.get_or_init(|| std::sync::Mutex::new(HashSet::new()))
+}
+
+fn write_fixture(
+    dir: &Path,
+    file: &str,
+    signature: &str,
+    slot: u64,
+    instructions: &[ParsedInstruction],
+    logs: &[String],
+) {
     let fixture = LogFixture {
         signature: signature.to_string(),
         slot,
         instructions: instructions
             .iter()
-            .map(|(program, stack_height)| FixtureInstruction {
-                program: program.to_string(),
-                stack_height: *stack_height,
+            .map(|i| FixtureInstruction {
+                program: i.program_id.to_string(),
+                stack_height: i.stack_height,
             })
             .collect(),
         logs: logs.to_vec(),
@@ -321,7 +460,7 @@ pub fn capture_fixture(
     if std::fs::create_dir_all(dir).is_err() {
         return;
     }
-    let path = dir.join(format!("logs_{}programs_depth{depth}.json", key.0));
+    let path = dir.join(file);
     if path.exists() {
         return;
     }

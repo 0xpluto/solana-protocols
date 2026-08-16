@@ -10,6 +10,8 @@
 //! - Simpler lifetime management
 //! - Thread-safe (no RefCell)
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
 
@@ -327,6 +329,66 @@ where
     result
 }
 
+// ---------------------------------------------------------------------------
+// Attribution health
+// ---------------------------------------------------------------------------
+
+static ATTR_TX: AtomicU64 = AtomicU64::new(0);
+static ATTR_TX_COMPLETE: AtomicU64 = AtomicU64::new(0);
+static ATTR_TX_TRUNCATED: AtomicU64 = AtomicU64::new(0);
+static ATTR_TX_DESYNCED: AtomicU64 = AtomicU64::new(0);
+static ATTR_TX_OVERRUN: AtomicU64 = AtomicU64::new(0);
+static ATTR_IX: AtomicU64 = AtomicU64::new(0);
+static ATTR_IX_OPENED: AtomicU64 = AtomicU64::new(0);
+
+/// Running health of the log-attribution walk.
+///
+/// Counted unconditionally rather than behind a flag, for the same reason the
+/// no-handler tally is: this walk fails *silently* — a mis-sliced instruction
+/// still has a list of logs — so the only thing that can notice is a number
+/// that was always being kept. Plain atomics, so the crate imposes no metrics
+/// framework on consumers; the binary publishes them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AttributionStats {
+    /// Transactions whose logs were attributed.
+    pub transactions: u64,
+    /// Every instruction received its own `invoke`.
+    pub complete: u64,
+    /// The runtime cut the log stream; instructions past the cut are marked.
+    pub truncated: u64,
+    /// An `invoke` named a program the instruction list did not expect.
+    pub desynced: u64,
+    /// The stream invoked past the last instruction.
+    pub overrun: u64,
+    /// Instructions seen.
+    pub instructions: u64,
+    /// Instructions that got their own opening `invoke`.
+    pub instructions_opened: u64,
+}
+
+impl AttributionStats {
+    /// Fraction of instructions handed their own log slice, `None` before any
+    /// instruction has been seen — a ratio over nothing is not 100%.
+    #[must_use]
+    pub fn instruction_coverage(&self) -> Option<f64> {
+        (self.instructions > 0).then(|| self.instructions_opened as f64 / self.instructions as f64)
+    }
+}
+
+/// Snapshot the attribution counters.
+#[must_use]
+pub fn attribution_stats() -> AttributionStats {
+    AttributionStats {
+        transactions: ATTR_TX.load(Ordering::Relaxed),
+        complete: ATTR_TX_COMPLETE.load(Ordering::Relaxed),
+        truncated: ATTR_TX_TRUNCATED.load(Ordering::Relaxed),
+        desynced: ATTR_TX_DESYNCED.load(Ordering::Relaxed),
+        overrun: ATTR_TX_OVERRUN.load(Ordering::Relaxed),
+        instructions: ATTR_IX.load(Ordering::Relaxed),
+        instructions_opened: ATTR_IX_OPENED.load(Ordering::Relaxed),
+    }
+}
+
 /// What a log entry does to the invocation stack.
 ///
 /// Extracted before the entry is moved into its owner, and exhaustive so a new
@@ -384,15 +446,32 @@ fn attach_logs(result: &mut [ParsedInstruction], entries: Vec<LogEntry>) {
     // Next instruction awaiting its `invoke`.
     let mut cursor = 0usize;
 
+    ATTR_TX.fetch_add(1, Ordering::Relaxed);
+    ATTR_IX.fetch_add(result.len() as u64, Ordering::Relaxed);
+    // `cursor` at return *is* the number of instructions that got their own
+    // opening invoke, on every exit path, so the accounting cannot drift from
+    // the walk.
+    let finish = |cursor: usize, outcome: &AtomicU64| {
+        ATTR_IX_OPENED.fetch_add(cursor as u64, Ordering::Relaxed);
+        outcome.fetch_add(1, Ordering::Relaxed);
+    };
+
     for entry in entries {
         match frame_effect(&entry) {
             FrameEffect::Cut => {
-                if let Some(&top) = frames.last() {
-                    result[top].logs.push(entry);
+                // *Every* open frame lost its tail, not just the innermost:
+                // each one is still waiting for a `success` the runtime will
+                // never emit. Marking only the top left the outer frames
+                // reading as `Unterminated`, which blames this walk for the
+                // runtime's truncation.
+                for &open in &frames {
+                    result[open].logs.push(LogEntry::Truncated);
                 }
                 for ix in result.iter_mut().skip(cursor) {
                     ix.logs.push(LogEntry::Truncated);
                 }
+                drop(entry);
+                finish(cursor, &ATTR_TX_TRUNCATED);
                 return;
             }
             FrameEffect::Open(program, depth) => {
@@ -402,6 +481,7 @@ fn attach_logs(result: &mut [ParsedInstruction], entries: Vec<LogEntry>) {
                         depth,
                         "log stream invokes past the last instruction; logs left unattached"
                     );
+                    finish(cursor, &ATTR_TX_OVERRUN);
                     return;
                 };
                 if expected.program_id != program || expected.stack_height != depth {
@@ -413,6 +493,7 @@ fn attach_logs(result: &mut [ParsedInstruction], entries: Vec<LogEntry>) {
                         found_depth = depth,
                         "log stream desynced from the instruction list; logs left unattached"
                     );
+                    finish(cursor, &ATTR_TX_DESYNCED);
                     return;
                 }
                 result[cursor].logs.push(entry);
@@ -434,6 +515,7 @@ fn attach_logs(result: &mut [ParsedInstruction], entries: Vec<LogEntry>) {
             }
         }
     }
+    finish(cursor, &ATTR_TX_COMPLETE);
 }
 
 #[cfg(test)]
@@ -485,6 +567,81 @@ mod tests {
         assert_eq!(ix.instruction_index, 1);
         assert!(ix.is_inner());
         assert!(!ix.is_top_level());
+    }
+
+    /// The counters are global and every other test in this binary also parses,
+    /// so absolute deltas are unmeasurable here. What *is* measurable — and is
+    /// the thing that would silently rot — is the accounting identity: every
+    /// walk takes exactly one exit, and no walk can open more instructions than
+    /// it was given.
+    #[test]
+    fn attribution_accounting_balances() {
+        let keys = vec![Pubkey::new_unique(), Pubkey::new_unique()];
+        let logs = [
+            format!("Program {} invoke [1]", keys[0]),
+            format!("Program {} invoke [2]", keys[1]),
+            format!("Program {} success", keys[1]),
+            format!("Program {} success", keys[0]),
+        ];
+        let ixs = vec![
+            (0u8, [].as_slice(), Vec::new(), Some(1)),
+            (1u8, [].as_slice(), Vec::new(), Some(2)),
+        ];
+        let parsed = parse_instructions(ixs.into_iter(), logs.iter().map(String::as_str), &keys);
+        assert_eq!(parsed.len(), 2);
+
+        let s = attribution_stats();
+        assert_eq!(
+            s.transactions,
+            s.complete + s.truncated + s.desynced + s.overrun,
+            "every walk must take exactly one exit"
+        );
+        assert!(
+            s.instructions_opened <= s.instructions,
+            "cannot open more instructions than were handed over"
+        );
+        assert!(s.instruction_coverage().is_some_and(|c| c <= 1.0));
+    }
+
+    #[test]
+    fn coverage_over_nothing_is_unknown_not_perfect() {
+        let empty = AttributionStats {
+            transactions: 0,
+            complete: 0,
+            truncated: 0,
+            desynced: 0,
+            overrun: 0,
+            instructions: 0,
+            instructions_opened: 0,
+        };
+        assert_eq!(empty.instruction_coverage(), None);
+    }
+
+    /// A cut mid-stream orphans every frame on the stack, not just the one
+    /// that was executing. Found by the audit itself: `unterminated` was
+    /// non-zero on live traffic and every captured case was an outer frame of a
+    /// truncated transaction.
+    #[test]
+    fn truncation_marks_every_open_frame() {
+        let keys = vec![Pubkey::new_unique(), Pubkey::new_unique()];
+        let logs = [
+            format!("Program {} invoke [1]", keys[0]),
+            format!("Program {} invoke [2]", keys[1]),
+            "Log truncated".to_string(),
+        ];
+        let ixs = vec![
+            (0u8, [].as_slice(), Vec::new(), Some(1)),
+            (1u8, [].as_slice(), Vec::new(), Some(2)),
+        ];
+        let parsed = parse_instructions(ixs.into_iter(), logs.iter().map(String::as_str), &keys);
+
+        for ix in &parsed {
+            assert!(
+                ix.logs_truncated(),
+                "instruction {} was left unmarked by the cut",
+                ix.instruction_index
+            );
+        }
     }
 
     #[test]

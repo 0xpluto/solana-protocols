@@ -53,11 +53,13 @@ mod traits;
 
 // Layer 1: Generic parsing
 pub use instruction::{
-    parse_instructions, ParsedInstruction, ParsedInstructionBuilder, RawInstruction,
+    attribution_stats, parse_instructions, AttributionStats, ParsedInstruction,
+    ParsedInstructionBuilder, RawInstruction,
 };
 pub use log::{parse_logs, LogEntry, LogParseError, LogParser, ParsedLog};
 pub use log_fixture::{
-    audit_log_slice, capture_fixture, FixtureError, FixtureInstruction, LogFixture, LogSliceVerdict,
+    audit_log_slice, capture_fixture, capture_imperfect, deep_audit, deep_audit_tally,
+    FixtureError, FixtureInstruction, LogFixture, LogSliceVerdict, VERDICT_LABELS,
 };
 pub use registry::{
     InstructionParseError, LiquidityAddEvent, LiquidityRemoveEvent, PoolCreationEvent,
