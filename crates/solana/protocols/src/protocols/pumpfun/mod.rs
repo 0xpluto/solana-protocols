@@ -80,10 +80,14 @@ pub use instructions::{
     BuyExactSolInParams,
     BuyParams,
     BuyV2Params,
+    CollectCreatorFeeParams,
+    CollectCreatorFeeV2Params,
     CreateAccounts,
     CreateParams,
     CreateV2Accounts,
     CreateV2Params,
+    DistributeCreatorFeesParams,
+    DistributeCreatorFeesV2Params,
     // Unified instruction enum
     PumpfunInstruction,
     PumpfunInstructionAccounts,
@@ -91,5 +95,6 @@ pub use instructions::{
     SellAccounts,
     SellBuilder,
     SellParams,
+    SellV2Params,
 };
 pub use state::BondingCurve;

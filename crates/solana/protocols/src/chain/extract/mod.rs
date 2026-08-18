@@ -22,10 +22,18 @@
 //!    [`ExtractorRegistry::with_all_protocols`](registry::ExtractorRegistry::with_all_protocols).
 
 mod context;
+mod error;
 mod registry;
+mod traits;
 
 pub use context::{ExtractContext, NoContext};
+pub use error::{
+    extract_failure_tally, extract_failures, report_extract_failure, ExtractError, Extracted,
+};
 pub use registry::{ExtractFn, ExtractorRegistry, ProtocolExtractor};
+pub use traits::{
+    child_event, corroborate, ExtractsCreation, ExtractsCreatorFee, ExtractsMigration, ExtractsSwap,
+};
 
 use solana_program::pubkey::Pubkey;
 use solana_sdk::signature::Signature;

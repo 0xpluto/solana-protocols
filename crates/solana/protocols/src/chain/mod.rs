@@ -14,7 +14,9 @@ mod extract;
 mod types;
 
 pub use extract::{
-    extract_transaction, ExtractContext, ExtractFn, ExtractorRegistry, NoContext,
+    child_event, corroborate, extract_failure_tally, extract_failures, extract_transaction,
+    report_extract_failure, ExtractContext, ExtractError, ExtractFn, Extracted, ExtractorRegistry,
+    ExtractsCreation, ExtractsCreatorFee, ExtractsMigration, ExtractsSwap, NoContext,
     ProtocolExtractor, TransactionHeader,
 };
 pub use types::{

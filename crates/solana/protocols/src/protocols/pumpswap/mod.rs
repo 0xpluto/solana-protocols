@@ -51,8 +51,8 @@ pub use events::{BuyEvent, SellEvent, BUY_EVENT_DISCRIMINATOR, SELL_EVENT_DISCRI
 pub use extract::PumpSwapExtractor;
 pub use fee_config::PumpSwapFeeConfig;
 pub use instructions::{
-    BuyAccounts, BuyBuilder, BuyParams, CollectCoinCreatorFeeAccounts, CreatePoolAccounts,
-    CreatePoolParams, DepositAccounts, DepositParams, PumpSwapInstruction,
+    BuyAccounts, BuyBuilder, BuyExactQuoteInParams, BuyParams, CollectCoinCreatorFeeAccounts,
+    CreatePoolAccounts, CreatePoolParams, DepositAccounts, DepositParams, PumpSwapInstruction,
     PumpSwapInstructionAccounts, PumpSwapInstructionEvent, SellAccounts, SellBuilder, SellParams,
     WithdrawAccounts, WithdrawParams,
 };

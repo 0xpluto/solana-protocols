@@ -25,21 +25,18 @@
 //! `Program data:` log lines.
 
 use solana_program::pubkey::Pubkey;
-use tracing::warn;
 
-use super::events::{
-    BuyEvent, CollectCoinCreatorFeeEvent, SellEvent, BUY_EVENT_DISCRIMINATOR,
-    SELL_EVENT_DISCRIMINATOR,
-};
+use super::events::{BuyEvent, CollectCoinCreatorFeeEvent, SellEvent};
 use super::{
-    BuyAccounts, CollectCoinCreatorFeeAccounts, CreatePoolAccounts, PumpSwapInstruction,
-    SellAccounts, PROGRAM_ID as PUMPSWAP_PROGRAM,
+    BuyAccounts, BuyExactQuoteInParams, BuyParams, CollectCoinCreatorFeeAccounts,
+    CreatePoolAccounts, CreatePoolParams, PumpSwapInstruction, SellAccounts, SellParams,
+    PROGRAM_ID as PUMPSWAP_PROGRAM,
 };
 use crate::chain::{
-    ChainEvent, CreatorFee, CreatorPayout, CurveState, ExtractContext, Migration,
-    ProtocolExtractor, Swap,
+    child_event, corroborate, report_extract_failure, ChainEvent, CreatorFee, CreatorPayout,
+    CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreatorFee, ExtractsMigration,
+    ExtractsSwap, Migration, ProtocolExtractor, Swap,
 };
-use crate::parsing::event::{find_child_event, ProtocolEvent};
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::meteora_damm_v2::constants::ANCHOR_EVENT_DISCRIMINATOR;
 use crate::protocols::Protocol;
@@ -56,310 +53,238 @@ impl ProtocolExtractor for PumpSwapExtractor {
     fn extract(
         ix: &ParsedInstruction,
         all_instructions: &[ParsedInstruction],
-        _ctx: &dyn ExtractContext,
+        ctx: &dyn ExtractContext,
     ) -> Option<ChainEvent> {
-        // Skip inner event-CPI ixs — they're walked from the outer
-        // Buy/Sell ix below. We identify them by the Anchor event
-        // envelope at byte 0.
+        match Self::try_extract(ix, all_instructions, ctx) {
+            Ok(event) => event,
+            Err(e) => {
+                report_extract_failure(&Protocol::PumpSwap, ix, &e);
+                None
+            }
+        }
+    }
+}
+
+impl PumpSwapExtractor {
+    /// The whole extractor, as a `Result`. See pumpfun's for the shape.
+    fn try_extract(
+        ix: &ParsedInstruction,
+        all: &[ParsedInstruction],
+        ctx: &dyn ExtractContext,
+    ) -> Extracted {
         if ix.data.len() >= 8 && ix.data[..8] == ANCHOR_EVENT_DISCRIMINATOR {
-            return None;
+            return Ok(None);
         }
 
-        let pumpswap_ix = match PumpSwapInstruction::try_from_slice(&ix.data) {
+        let parsed = match PumpSwapInstruction::try_from_slice(&ix.data) {
             Ok(v) => v,
             Err(e) => {
-                // Not "skipping" — this is an instruction on a program we CLAIM
-                // to decode, so failing to parse it is a gap in us, not a
-                // non-event. Retained with its bytes so the parser can be
-                // fixed later; this branch used to `trace!` and vanish.
                 crate::undecoded::report(&ix.program_id, &ix.data, &ix.accounts, &format!("{e:?}"));
-                return None;
+                return Ok(None);
             }
         };
 
-        match pumpswap_ix {
-            // Both buy forms emit the same BuyEvent and differ only in which
-            // side the trader pinned, so extraction is shared. Which one ran
-            // is preserved on the row via `Swap.instruction`, because the
-            // rounding direction differs and the quote math must not be
-            // graded across the two together.
-            PumpSwapInstruction::Buy(ref p) => extract_buy(ix, all_instructions, p.track_volume),
-            PumpSwapInstruction::BuyExactQuoteIn(ref p) => {
-                extract_buy(ix, all_instructions, p.track_volume)
+        match &parsed {
+            PumpSwapInstruction::Buy(p) => swap_via(p, ix, all, ctx),
+            PumpSwapInstruction::BuyExactQuoteIn(p) => swap_via(p, ix, all, ctx),
+            PumpSwapInstruction::Sell(p) => swap_via(p, ix, all, ctx),
+            PumpSwapInstruction::CreatePool(p) => Ok(Some(ChainEvent::Migration(p.migration(ix)?))),
+            PumpSwapInstruction::CollectCoinCreatorFee(p) => {
+                let ev = child_event::<CollectCoinCreatorFeeEvent>(ix, all, &PUMPSWAP_PROGRAM)?;
+                Ok(Some(ChainEvent::CreatorFee(p.creator_fee(&ev, ix)?)))
             }
-            // `sell` declares no such argument, so absent is the truth here
-            // rather than a default.
-            PumpSwapInstruction::Sell(_) => extract_sell(ix, all_instructions),
-            PumpSwapInstruction::CreatePool(_) => extract_create_pool(ix),
-            // Deposit / Withdraw don't produce trade events we model.
-            PumpSwapInstruction::Deposit(_) | PumpSwapInstruction::Withdraw(_) => None,
-            PumpSwapInstruction::CollectCoinCreatorFee(_) => {
-                extract_collect_coin_creator_fee(ix, all_instructions)
-            }
+            // Real liquidity events we decode and do not yet model. An error
+            // rather than a quiet `None`, so they are counted alongside every
+            // other gap instead of vanishing — which is how they get
+            // prioritised.
+            PumpSwapInstruction::Deposit(_) => Err(ExtractError::Unmodelled {
+                instruction: "deposit",
+            }),
+            PumpSwapInstruction::Withdraw(_) => Err(ExtractError::Unmodelled {
+                instruction: "withdraw",
+            }),
         }
     }
 }
 
-fn extract_buy(
+fn swap_via<T: ExtractsSwap>(
+    params: &T,
     ix: &ParsedInstruction,
     all: &[ParsedInstruction],
+    ctx: &dyn ExtractContext,
+) -> Extracted {
+    let event = child_event::<T::Event>(ix, all, &PUMPSWAP_PROGRAM)?;
+    Ok(Some(ChainEvent::Swap(params.swap(&event, ix, ctx)?)))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Swaps
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Shared by both buy forms: the pool is quote/base, the trader pays quote.
+fn buy_swap(
+    event: &BuyEvent,
+    ix: &ParsedInstruction,
     track_volume: crate::protocols::OptionBool,
-) -> Option<ChainEvent> {
-    let accounts = match BuyAccounts::from_account_keys(&ix.accounts) {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(
-                ?e,
-                ix_index = ix.instruction_index,
-                "pumpswap buy: account parse failed"
-            );
-            return None;
+) -> Result<Swap, ExtractError> {
+    let a = BuyAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+        ExtractError::AccountLayout {
+            expected: "BuyAccounts",
+            source,
         }
-    };
+    })?;
+    corroborate("pool", &event.pool, &a.pool)?;
 
-    let event = find_buy_event(ix, all)?;
-    if event.pool != accounts.pool {
-        warn!(
-            event_pool = %event.pool,
-            outer_pool = %accounts.pool,
-            "pumpswap buy: BuyEvent pool mismatches outer ix"
-        );
-        return None;
-    }
-
-    // PumpSwap pools are quote/base. For pumpfun-origin pools the
-    // quote is WSOL and base is the memecoin; we map that straight
-    // onto token_in (paid) / token_out (received) for buys.
-    let amount_in = event.gross_quote_in();
-    let amount_out = event.base_amount_out;
-    let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee;
-
-    Some(ChainEvent::Swap(Swap {
+    Ok(Swap {
         track_volume,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::PumpSwap,
-        pool: accounts.pool,
-        trader: accounts.user,
-        token_in: accounts.quote_mint,
-        amount_in,
-        token_out: accounts.base_mint,
-        amount_out,
-        fee_amount,
-        fee_mint: accounts.quote_mint,
+        pool: a.pool,
+        trader: a.user,
+        token_in: a.quote_mint,
+        // Gross: what the trader parted with, including every fee that left the
+        // pool. `quote_amount_in_with_lp_fee` is only what entered reserves.
+        amount_in: event.gross_quote_in(),
+        token_out: a.base_mint,
+        amount_out: event.base_amount_out,
+        fee_amount: event.lp_fee + event.protocol_fee + event.coin_creator_fee,
+        fee_mint: a.quote_mint,
         state_after: None,
         // Measured PRE-swap: see `Swap::state_before`.
         state_before: Some(CurveState::Reserves {
-            // Buy: token_in = quote, token_out = base.
             in_side: event.pool_quote_token_reserves,
             out_side: event.pool_base_token_reserves,
         }),
-    }))
+    })
 }
 
-fn extract_sell(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<ChainEvent> {
-    let accounts = match SellAccounts::from_account_keys(&ix.accounts) {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(
-                ?e,
-                ix_index = ix.instruction_index,
-                "pumpswap sell: account parse failed"
-            );
-            return None;
-        }
-    };
+impl ExtractsSwap for BuyParams {
+    type Event = BuyEvent;
 
-    let event = find_sell_event(ix, all)?;
-    if event.pool != accounts.pool {
-        warn!(
-            event_pool = %event.pool,
-            outer_pool = %accounts.pool,
-            "pumpswap sell: SellEvent pool mismatches outer ix"
-        );
-        return None;
+    fn swap(
+        &self,
+        event: &BuyEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        buy_swap(event, ix, self.track_volume)
     }
-
-    // Sell: token_in = base (mint), token_out = quote (WSOL).
-    // user_quote_amount_out is the net SOL the user received after
-    // all fees — that's the realized amount_out.
-    let amount_in = event.base_amount_in;
-    let amount_out = event.user_quote_amount_out;
-    let fee_amount = event.lp_fee + event.protocol_fee + event.coin_creator_fee;
-
-    Some(ChainEvent::Swap(Swap {
-        // No such argument on this protocol.
-        track_volume: crate::protocols::OptionBool::None,
-        instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
-        protocol: Protocol::PumpSwap,
-        pool: accounts.pool,
-        trader: accounts.user,
-        token_in: accounts.base_mint,
-        amount_in,
-        token_out: accounts.quote_mint,
-        amount_out,
-        fee_amount,
-        fee_mint: accounts.quote_mint,
-        state_after: None,
-        // Measured PRE-swap: see `Swap::state_before`.
-        state_before: Some(CurveState::Reserves {
-            // Sell: token_in = base, token_out = quote.
-            in_side: event.pool_base_token_reserves,
-            out_side: event.pool_quote_token_reserves,
-        }),
-    }))
 }
 
-/// The coin creator withdrawing fees the AMM accrued for them.
-///
-/// Normalises to the same [`CreatorFee`] pumpfun produces: the two programs
-/// name the fact differently ("creator" vs "coin creator") but it is one
-/// economic event, and a consumer asking "when did this creator get paid"
-/// should not have to ask it twice.
-///
-/// The event carries the amount; the instruction carries none. Without the
-/// event there is no row, because a withdrawal of an unknown size is not a
-/// measurement.
-fn extract_collect_coin_creator_fee(
-    ix: &ParsedInstruction,
-    all_instructions: &[ParsedInstruction],
-) -> Option<ChainEvent> {
-    let ev: CollectCoinCreatorFeeEvent = find_child_event(ix, all_instructions, &PUMPSWAP_PROGRAM)
-        .or_else(|| {
-            warn!(
-                ix_index = ix.instruction_index,
-                "pumpswap collect_coin_creator_fee: no CollectCoinCreatorFeeEvent on any child"
-            );
-            None
+impl ExtractsSwap for BuyExactQuoteInParams {
+    type Event = BuyEvent;
+
+    fn swap(
+        &self,
+        event: &BuyEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        // Same account layout and same event; only the pinned side differs, and
+        // which instruction ran is preserved on the row.
+        buy_swap(event, ix, self.track_volume)
+    }
+}
+
+impl ExtractsSwap for SellParams {
+    type Event = SellEvent;
+
+    fn swap(
+        &self,
+        event: &SellEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        let a = SellAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "SellAccounts",
+                source,
+            }
         })?;
+        corroborate("pool", &event.pool, &a.pool)?;
 
-    // The event names the accounts but not the mint, so read the denomination
-    // off the instruction's own `quote_mint` slot. PumpSwap sends exactly the
-    // eight accounts its IDL declares here, unlike pumpfun's creator-fee
-    // instructions, so the slot is safe.
-    let accounts = match CollectCoinCreatorFeeAccounts::from_account_keys(&ix.accounts) {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(
-                ?e,
-                ix_index = ix.instruction_index,
-                "pumpswap collect_coin_creator_fee: account parse failed"
-            );
-            return None;
-        }
-    };
-
-    Some(ChainEvent::CreatorFee(CreatorFee {
-        protocol: Protocol::PumpSwap,
-        payout: CreatorPayout::Direct {
-            creator: ev.coin_creator,
-        },
-        amount: ev.coin_creator_fee,
-        quote_mint: accounts.quote_mint,
-        // A pool's creator vault accrues from that pool alone, but the
-        // instruction does not name the pool or its base mint — only the vault.
-        // Recovering the mint would mean a lookup we have not verified, and a
-        // guess here would be an attribution the chain never made.
-        mint: None,
-        timestamp: ev.timestamp,
-    }))
-}
-
-fn extract_create_pool(ix: &ParsedInstruction) -> Option<ChainEvent> {
-    let accounts = match CreatePoolAccounts::from_account_keys(&ix.accounts) {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(?e, "pumpswap create_pool: account parse failed");
-            return None;
-        }
-    };
-
-    // Emit a Migration event. We don't know the source bonding-curve
-    // pool or the exact migrated amounts from the create_pool ix
-    // alone — consumers that care can cross-reference with prior
-    // pumpfun creation events for `accounts.base_mint`. Migrated
-    // amounts default to 0; downstream code shouldn't rely on
-    // create-time amounts (the pool's first swap reflects real state).
-    Some(ChainEvent::Migration(Migration {
-        from_protocol: Protocol::Pumpfun,
-        to_protocol: Protocol::PumpSwap,
-        mint: accounts.base_mint,
-        from_pool: Pubkey::default(),
-        to_pool: accounts.pool,
-        migrated_sol: 0,
-        migrated_tokens: 0,
-    }))
+        Ok(Swap {
+            // No such argument on this instruction.
+            track_volume: crate::protocols::OptionBool::None,
+            instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
+            protocol: Protocol::PumpSwap,
+            pool: a.pool,
+            trader: a.user,
+            token_in: a.base_mint,
+            amount_in: event.base_amount_in,
+            // Net of every fee — the realized amount the user received.
+            token_out: a.quote_mint,
+            amount_out: event.user_quote_amount_out,
+            fee_amount: event.lp_fee + event.protocol_fee + event.coin_creator_fee,
+            fee_mint: a.quote_mint,
+            state_after: None,
+            state_before: Some(CurveState::Reserves {
+                in_side: event.pool_base_token_reserves,
+                out_side: event.pool_quote_token_reserves,
+            }),
+        })
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Event lookup — walk children for the matching emit_cpi! event.
-// Falls back to the outer ix's program-data log for legacy emit!.
+// Migration and creator fees
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn find_buy_event(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<BuyEvent> {
-    if let Some(body) = find_inner_event_body(ix, all, &BUY_EVENT_DISCRIMINATOR) {
-        crate::parsing::event::capture_event_body("BuyEvent", body);
-        match BuyEvent::from_event_body(body) {
-            Ok(ev) => return Some(ev),
-            // Loud: a body carrying our discriminator that will not decode is a
-            // layout defect, not a foreign event, and silence here is what let
-            // an earlier bad conversion read as "no swaps today".
-            Err(e) => warn!(%e, len = body.len(), "pumpswap BuyEvent body did not decode"),
-        }
+impl ExtractsMigration for CreatePoolParams {
+    fn migration(&self, ix: &ParsedInstruction) -> Result<Migration, ExtractError> {
+        let a = CreatePoolAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "CreatePoolAccounts",
+                source,
+            }
+        })?;
+        // The source curve and the migrated amounts are not in this
+        // instruction. They are recorded as unknown rather than guessed;
+        // `docs/` tracks reading them from `CreatePoolEvent`, which is not
+        // decoded yet.
+        Ok(Migration {
+            from_protocol: Protocol::Pumpfun,
+            to_protocol: Protocol::PumpSwap,
+            mint: a.base_mint,
+            from_pool: Pubkey::default(),
+            to_pool: a.pool,
+            migrated_sol: 0,
+            migrated_tokens: 0,
+        })
     }
-    // Legacy emit! — body lives on a program-data log under the
-    // event-name discriminator.
-    if let Some(payload) = ix.find_data_log_with_discriminator(&BUY_EVENT_DISCRIMINATOR) {
-        if let Ok(ev) = BuyEvent::from_event_body(payload) {
-            return Some(ev);
-        }
-    }
-    warn!("pumpswap: BuyEvent not found via emit_cpi! or emit! paths");
-    None
 }
 
-fn find_sell_event(ix: &ParsedInstruction, all: &[ParsedInstruction]) -> Option<SellEvent> {
-    if let Some(body) = find_inner_event_body(ix, all, &SELL_EVENT_DISCRIMINATOR) {
-        crate::parsing::event::capture_event_body("SellEvent", body);
-        match SellEvent::from_event_body(body) {
-            Ok(ev) => return Some(ev),
-            Err(e) => warn!(%e, len = body.len(), "pumpswap SellEvent body did not decode"),
-        }
-    }
-    if let Some(payload) = ix.find_data_log_with_discriminator(&SELL_EVENT_DISCRIMINATOR) {
-        if let Ok(ev) = SellEvent::from_event_body(payload) {
-            return Some(ev);
-        }
-    }
-    warn!("pumpswap: SellEvent not found via emit_cpi! or emit! paths");
-    None
-}
+impl ExtractsCreatorFee for crate::parsing::NoParams {
+    type Event = CollectCoinCreatorFeeEvent;
 
-/// Walk the children of `outer_ix` looking for an inner self-CPI ix
-/// whose data is `[ANCHOR_EVENT_DISCRIMINATOR (8) || expected_disc
-/// (8) || body]`. Returns the body slice (no prefix).
-fn find_inner_event_body<'a>(
-    outer_ix: &ParsedInstruction,
-    all: &'a [ParsedInstruction],
-    expected_event_disc: &[u8; 8],
-) -> Option<&'a [u8]> {
-    let outer_idx = outer_ix.instruction_index;
-    for child in all.iter() {
-        if child.parent_index != Some(outer_idx) {
-            continue;
-        }
-        if child.program_id != PUMPSWAP_PROGRAM {
-            continue;
-        }
-        if child.data.len() < 16 {
-            continue;
-        }
-        if child.data[..8] != ANCHOR_EVENT_DISCRIMINATOR {
-            continue;
-        }
-        if &child.data[8..16] != expected_event_disc {
-            continue;
-        }
-        return Some(&child.data[16..]);
+    fn creator_fee(
+        &self,
+        event: &CollectCoinCreatorFeeEvent,
+        ix: &ParsedInstruction,
+    ) -> Result<CreatorFee, ExtractError> {
+        // The event names the accounts but not the mint, so the denomination is
+        // read off the instruction's own `quote_mint` slot. PumpSwap sends
+        // exactly the eight accounts its IDL declares here, unlike pumpfun's
+        // creator-fee instructions, so the slot is safe.
+        let a =
+            CollectCoinCreatorFeeAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+                ExtractError::AccountLayout {
+                    expected: "CollectCoinCreatorFeeAccounts",
+                    source,
+                }
+            })?;
+        Ok(CreatorFee {
+            protocol: Protocol::PumpSwap,
+            payout: CreatorPayout::Direct {
+                creator: event.coin_creator,
+            },
+            amount: event.coin_creator_fee,
+            quote_mint: a.quote_mint,
+            // A pool's creator vault accrues from that pool alone, but the
+            // instruction names only the vault — not the pool or its base mint.
+            // Recovering it would need a lookup we have not verified.
+            mint: None,
+            timestamp: event.timestamp,
+        })
     }
-    None
 }

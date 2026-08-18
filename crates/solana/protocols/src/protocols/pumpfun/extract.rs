@@ -12,21 +12,20 @@
 //! generalise.
 
 use solana_program::pubkey::Pubkey;
-use tracing::warn;
 
-use super::events::{
-    CollectCreatorFeeEvent, DistributeCreatorFeesEvent, TradeEvent, TRADE_EVENT_DISCRIMINATOR,
-};
+use super::events::{CollectCreatorFeeEvent, DistributeCreatorFeesEvent, TradeEvent};
 use super::{
-    BuyAccounts, CreateAccounts, CreateParams, CreateV2Accounts, CreateV2Params,
-    PumpfunInstruction, SellAccounts, PROGRAM_ID as PUMPFUN_PROGRAM,
+    BuyAccounts, BuyExactQuoteInV2Params, BuyExactSolInParams, BuyParams, BuyV2Params,
+    CollectCreatorFeeParams, CollectCreatorFeeV2Params, CreateAccounts, CreateParams,
+    CreateV2Accounts, CreateV2Params, DistributeCreatorFeesParams, DistributeCreatorFeesV2Params,
+    PumpfunInstruction, SellAccounts, SellParams, SellV2Params, PROGRAM_ID as PUMPFUN_PROGRAM,
 };
 use crate::chain::{
-    ChainEvent, CreatorFee, CreatorPayout, CurveState, ExtractContext, ProtocolExtractor, Swap,
-    TokenCreation,
+    child_event, corroborate, report_extract_failure, ChainEvent, CreatorFee, CreatorPayout,
+    CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreation, ExtractsCreatorFee,
+    ExtractsSwap, ProtocolExtractor, Swap, TokenCreation,
 };
-use crate::parsing::anchor::{event_body, ANCHOR_EVENT_TAG};
-use crate::parsing::event::find_child_event;
+use crate::parsing::anchor::ANCHOR_EVENT_TAG;
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::Protocol;
 
@@ -42,407 +41,475 @@ impl ProtocolExtractor for PumpfunExtractor {
     fn extract(
         ix: &ParsedInstruction,
         all_instructions: &[ParsedInstruction],
-        _ctx: &dyn ExtractContext,
+        ctx: &dyn ExtractContext,
     ) -> Option<ChainEvent> {
-        // Pumpfun emits `TradeEvent` via Anchor `emit_cpi!`, so the
-        // event payload lives on an *inner* self-CPI ix (the
-        // event-authority CPI), not on the outer Buy/Sell ix. Two
-        // kinds of pumpfun ixs reach this extractor:
-        //
-        // * Outer Buy/Sell/Create — `ix.data` starts with the
-        //   instruction discriminator. We pull mint / pool / user
-        //   from `ix.accounts` and walk children to find the
-        //   matching `TradeEvent` log.
-        // * Inner event self-CPIs — `ix.data` starts with the
-        //   8-byte Anchor event tag. We skip these here; the
-        //   parent Buy/Sell ix is what produces the chain event.
-        //
-        // The skip keys on the *tag*, not on TradeEvent's own
-        // discriminator: every Anchor event self-CPI must be skipped
-        // here, not just trades.
-        if ix.data.len() >= 8 && ix.data[..8] == ANCHOR_EVENT_TAG {
-            return None;
-        }
-
-        let pumpfun_ix = match PumpfunInstruction::try_from_slice(&ix.data) {
-            Ok(v) => v,
+        match Self::try_extract(ix, all_instructions, ctx) {
+            Ok(event) => event,
             Err(e) => {
-                // Not "skipping" — this is an instruction on a program we CLAIM
-                // to decode, so failing to parse it is a gap in us, not a
-                // non-event. Retained with its bytes so the parser can be
-                // fixed later; this branch used to `trace!` and vanish.
-                crate::undecoded::report(&ix.program_id, &ix.data, &ix.accounts, &format!("{e:?}"));
-                return None;
-            }
-        };
-
-        match pumpfun_ix {
-            // All six swap forms route here; `extract_swap` decides which can
-            // be decoded from their account layout and skips the rest loudly.
-            PumpfunInstruction::Buy(_)
-            | PumpfunInstruction::BuyV2(_)
-            | PumpfunInstruction::BuyExactSolIn(_)
-            | PumpfunInstruction::BuyExactQuoteInV2(_)
-            | PumpfunInstruction::Sell(_)
-            | PumpfunInstruction::SellV2(_) => extract_swap(ix, &pumpfun_ix, all_instructions),
-            PumpfunInstruction::Create(params) => extract_create(ix, &params),
-            PumpfunInstruction::CreateV2(params) => extract_create_v2(ix, &params),
-            PumpfunInstruction::CollectCreatorFee(_)
-            | PumpfunInstruction::CollectCreatorFeeV2(_) => {
-                extract_collect_creator_fee(ix, all_instructions)
-            }
-            PumpfunInstruction::DistributeCreatorFees(_)
-            | PumpfunInstruction::DistributeCreatorFeesV2(_) => {
-                extract_distribute_creator_fees(ix, all_instructions)
+                // Reported, never swallowed. The caller has the signature and
+                // turns this into a counted, retrievable sample; here we only
+                // have the instruction index, which is why this used to be an
+                // unactionable `warn!` nobody could reach.
+                report_extract_failure(&Protocol::Pumpfun, ix, &e);
+                None
             }
         }
     }
 }
 
-fn extract_swap(
-    ix: &ParsedInstruction,
-    pumpfun_ix: &PumpfunInstruction,
-    all_instructions: &[ParsedInstruction],
-) -> Option<ChainEvent> {
-    // Instruction accounts give us the pool identity (mint /
-    // bonding_curve / user). Executed amounts come from the TradeEvent
-    // log — declared params are slippage bounds we discard.
-    let (mint, pool, trader) = match pumpfun_ix {
-        // `buy_exact_sol_in` carries `buy`'s account layout exactly (it differs
-        // only in discriminator and which side the params pin), so it decodes
-        // through the same struct. Which instruction ran is preserved on the
-        // row, so the two are never graded as one.
-        PumpfunInstruction::Buy(_) | PumpfunInstruction::BuyExactSolIn(_) => {
-            let accounts = match BuyAccounts::from_account_keys(&ix.accounts) {
-                Ok(a) => a,
-                Err(e) => {
-                    warn!(
-                        ?e,
-                        ix_index = ix.instruction_index,
-                        "pumpfun buy: account parse failed"
-                    );
-                    return None;
-                }
-            };
-            (accounts.mint, accounts.bonding_curve, accounts.user)
+impl PumpfunExtractor {
+    /// The whole extractor, as a `Result`.
+    ///
+    /// `Ok(None)` is routine — an inner event self-CPI, or an instruction that
+    /// declares no event. `Err` is a gap in us: an instruction we recognise that
+    /// should have produced something and did not.
+    fn try_extract(
+        ix: &ParsedInstruction,
+        all: &[ParsedInstruction],
+        ctx: &dyn ExtractContext,
+    ) -> Extracted {
+        // Anchor emits events as self-CPIs on the same program, so an event ix
+        // reaches this extractor looking like an instruction. The parent already
+        // produced the event; skipping keys on the *tag*, which every Anchor
+        // event carries, not on one event's discriminator.
+        if ix.data.len() >= 8 && ix.data[..8] == ANCHOR_EVENT_TAG {
+            return Ok(None);
         }
-        // The v2 instructions carry a different, and *variable*, account
-        // layout — observed at 26/27/28/29 slots on mainnet 2026-08-12, so no
-        // fixed index is safe and decoding them through the v1 structs would
-        // silently yield the wrong mint, pool and trader.
-        //
-        // They do not need one. The `TradeEvent` already names the mint and
-        // the trader, and the bonding curve is a PDA *of* the mint — so
-        // identity is recovered without reference to any slot. That is
-        // strictly more robust than the v1 path: it cannot be broken by the
-        // program reordering, adding, or removing accounts, and the derived
-        // PDA is self-verifying because it must appear in the instruction's
-        // own account list.
-        PumpfunInstruction::BuyV2(_)
-        | PumpfunInstruction::BuyExactQuoteInV2(_)
-        | PumpfunInstruction::SellV2(_) => {
-            let ev = find_trade_event(ix, all_instructions)?;
-            let pool = super::accounts::derive_bonding_curve_pda(&ev.mint);
-            if !ix.accounts.contains(&pool) {
-                warn!(
-                    mint = %ev.mint,
-                    derived_pool = %pool,
-                    ix_index = ix.instruction_index,
-                    "pumpfun v2: bonding curve derived from the event mint is \
-                     absent from the instruction's accounts — refusing to \
-                     record an identity we cannot corroborate"
-                );
-                return None;
+
+        let parsed = match PumpfunInstruction::try_from_slice(&ix.data) {
+            Ok(v) => v,
+            Err(e) => {
+                // An instruction on a program we claim to decode. Retained with
+                // its bytes so the decoder can be fixed against real data.
+                crate::undecoded::report(&ix.program_id, &ix.data, &ix.accounts, &format!("{e:?}"));
+                return Ok(None);
             }
-            (ev.mint, pool, ev.user)
-        }
-        PumpfunInstruction::Sell(_) => {
-            let accounts = match SellAccounts::from_account_keys(&ix.accounts) {
-                Ok(a) => a,
-                Err(e) => {
-                    warn!(
-                        ?e,
-                        ix_index = ix.instruction_index,
-                        "pumpfun sell: account parse failed"
-                    );
-                    return None;
-                }
-            };
-            (accounts.mint, accounts.bonding_curve, accounts.user)
-        }
-        PumpfunInstruction::Create(_)
-        | PumpfunInstruction::CreateV2(_)
-        | PumpfunInstruction::CollectCreatorFee(_)
-        | PumpfunInstruction::CollectCreatorFeeV2(_)
-        | PumpfunInstruction::DistributeCreatorFees(_)
-        | PumpfunInstruction::DistributeCreatorFeesV2(_) => return None,
-    };
-
-    let trade_event = find_trade_event(ix, all_instructions)?;
-
-    // Sanity check: the mint in the log must match the mint the
-    // instruction targets. Mismatch = tampered log or parser bug.
-    if trade_event.mint != mint {
-        warn!(
-            log_mint = %trade_event.mint,
-            account_mint = %mint,
-            "pumpfun TradeEvent mint mismatches instruction accounts"
-        );
-    }
-
-    // Pumpfun bonding curves are always SOL-denominated on one side.
-    // Map the executed amounts + virtual reserves into the
-    // token-agnostic Swap shape relative to trade direction.
-    let (token_in, amount_in, token_out, amount_out, reserve_in, reserve_out) =
-        if trade_event.is_buy {
-            // Trader paid SOL, received the bonding-curve token.
-            (
-                crate::tokens::WSOL,
-                trade_event.sol_amount,
-                mint,
-                trade_event.token_amount,
-                trade_event.virtual_sol_reserves,
-                trade_event.virtual_token_reserves,
-            )
-        } else {
-            // Trader paid the token, received SOL.
-            (
-                mint,
-                trade_event.token_amount,
-                crate::tokens::WSOL,
-                trade_event.sol_amount,
-                trade_event.virtual_token_reserves,
-                trade_event.virtual_sol_reserves,
-            )
         };
 
-    Some(ChainEvent::Swap(Swap {
-        // Read off the instruction rather than defaulted: on
-        // `buy_exact_quote_in_v2` this is an argument the IDL does not declare,
-        // and it is the only record that the trade opted in.
-        track_volume: match pumpfun_ix {
-            PumpfunInstruction::Buy(p) => p.track_volume,
-            PumpfunInstruction::BuyExactSolIn(p) => p.track_volume,
-            PumpfunInstruction::BuyExactQuoteInV2(p) => p.track_volume,
-            // `buy_v2` declares no trailing flag and has never been observed
-            // sending one (0 of 208 in a mainnet window), unlike its v2 sibling.
-            PumpfunInstruction::BuyV2(_)
-            | PumpfunInstruction::Sell(_)
-            | PumpfunInstruction::SellV2(_)
-            | PumpfunInstruction::Create(_)
-            | PumpfunInstruction::CreateV2(_)
-            | PumpfunInstruction::CollectCreatorFee(_)
-            | PumpfunInstruction::CollectCreatorFeeV2(_)
-            | PumpfunInstruction::DistributeCreatorFees(_)
-            | PumpfunInstruction::DistributeCreatorFeesV2(_) => crate::protocols::OptionBool::None,
-        },
+        // One arm per variant, each delegating to the trait that variant
+        // implements. Nothing here decides *how* an event is built — only which
+        // question to ask — so a new instruction is a new arm plus an impl, and
+        // an instruction that declares no event cannot silently fall through.
+        match &parsed {
+            PumpfunInstruction::Buy(p) => swap_via(p, ix, all, ctx),
+            PumpfunInstruction::BuyExactSolIn(p) => swap_via(p, ix, all, ctx),
+            PumpfunInstruction::Sell(p) => swap_via(p, ix, all, ctx),
+            PumpfunInstruction::BuyV2(p) => swap_via(p, ix, all, ctx),
+            PumpfunInstruction::BuyExactQuoteInV2(p) => swap_via(p, ix, all, ctx),
+            PumpfunInstruction::SellV2(p) => swap_via(p, ix, all, ctx),
+            PumpfunInstruction::Create(p) => {
+                Ok(Some(ChainEvent::TokenCreation(p.creation(ix, ctx)?)))
+            }
+            PumpfunInstruction::CreateV2(p) => {
+                Ok(Some(ChainEvent::TokenCreation(p.creation(ix, ctx)?)))
+            }
+            PumpfunInstruction::CollectCreatorFee(p) => fee_via(p, ix, all),
+            PumpfunInstruction::CollectCreatorFeeV2(p) => fee_via(p, ix, all),
+            PumpfunInstruction::DistributeCreatorFees(p) => fee_via(p, ix, all),
+            PumpfunInstruction::DistributeCreatorFeesV2(p) => fee_via(p, ix, all),
+        }
+    }
+}
+
+/// Resolve an instruction's event, then let it build its own swap.
+fn swap_via<T: ExtractsSwap>(
+    params: &T,
+    ix: &ParsedInstruction,
+    all: &[ParsedInstruction],
+    ctx: &dyn ExtractContext,
+) -> Extracted {
+    let event = child_event::<T::Event>(ix, all, &PUMPFUN_PROGRAM)?;
+    Ok(Some(ChainEvent::Swap(params.swap(&event, ix, ctx)?)))
+}
+
+/// Same, for the creator-fee family.
+fn fee_via<T: ExtractsCreatorFee>(
+    params: &T,
+    ix: &ParsedInstruction,
+    all: &[ParsedInstruction],
+) -> Extracted {
+    let event = child_event::<T::Event>(ix, all, &PUMPFUN_PROGRAM)?;
+    Ok(Some(ChainEvent::CreatorFee(
+        params.creator_fee(&event, ix)?,
+    )))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Swaps
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Everything a pumpfun swap needs beyond the event, resolved per instruction.
+struct SwapIdentity {
+    mint: Pubkey,
+    pool: Pubkey,
+    trader: Pubkey,
+}
+
+/// The v1 forms read identity from fixed account slots.
+fn identity_from_v1_buy(ix: &ParsedInstruction) -> Result<SwapIdentity, ExtractError> {
+    let a = BuyAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+        ExtractError::AccountLayout {
+            expected: "BuyAccounts",
+            source,
+        }
+    })?;
+    Ok(SwapIdentity {
+        mint: a.mint,
+        pool: a.bonding_curve,
+        trader: a.user,
+    })
+}
+
+fn identity_from_v1_sell(ix: &ParsedInstruction) -> Result<SwapIdentity, ExtractError> {
+    let a = SellAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+        ExtractError::AccountLayout {
+            expected: "SellAccounts",
+            source,
+        }
+    })?;
+    Ok(SwapIdentity {
+        mint: a.mint,
+        pool: a.bonding_curve,
+        trader: a.user,
+    })
+}
+
+/// The v2 forms carry a *variable* account list — 26/27/28/29 slots observed on
+/// mainnet — so no fixed index is safe and reading them through a v1 struct
+/// would yield the wrong mint, pool and trader while looking successful.
+///
+/// They do not need one. The event names the mint and the trader, and the
+/// bonding curve is a PDA *of* the mint, so identity is recovered without
+/// reference to any slot. The derived PDA is then corroborated against the
+/// instruction's own account list: a swap really did touch its curve, so a
+/// derivation that does not appear there is one we cannot stand behind.
+fn identity_from_v2(ix: &ParsedInstruction, ev: &TradeEvent) -> Result<SwapIdentity, ExtractError> {
+    let pool = super::accounts::derive_bonding_curve_pda(&ev.mint);
+    if !ix.accounts.contains(&pool) {
+        return Err(ExtractError::Corroboration {
+            field: "bonding_curve derived from the event mint",
+            from_event: pool.to_string(),
+            from_accounts: "absent from the instruction's accounts".to_string(),
+        });
+    }
+    Ok(SwapIdentity {
+        mint: ev.mint,
+        pool,
+        trader: ev.user,
+    })
+}
+
+/// Map a `TradeEvent` onto the token-agnostic [`Swap`], given identity.
+///
+/// Amounts come from the event, never the arguments: the declared side is a
+/// slippage bound, not a fill. Pumpfun curves are SOL-denominated on one side,
+/// so direction decides which token each amount belongs to.
+fn swap_from(
+    id: &SwapIdentity,
+    ev: &TradeEvent,
+    ix: &ParsedInstruction,
+    track_volume: crate::protocols::OptionBool,
+) -> Swap {
+    let (token_in, amount_in, token_out, amount_out, reserve_in, reserve_out) = if ev.is_buy {
+        (
+            crate::tokens::WSOL,
+            ev.sol_amount,
+            id.mint,
+            ev.token_amount,
+            ev.virtual_sol_reserves,
+            ev.virtual_token_reserves,
+        )
+    } else {
+        (
+            id.mint,
+            ev.token_amount,
+            crate::tokens::WSOL,
+            ev.sol_amount,
+            ev.virtual_token_reserves,
+            ev.virtual_sol_reserves,
+        )
+    };
+
+    Swap {
+        track_volume,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::Pumpfun,
-        pool,
-        trader,
+        pool: id.pool,
+        trader: id.trader,
         token_in,
         amount_in,
         token_out,
         amount_out,
         // Read off the event, not recomputed: the chain publishes the exact
-        // protocol + creator lamports it charged. An `Absent` fee block means
-        // the event predates those fields, which is the only case that still
-        // records zero. Pumpfun charges in SOL regardless of direction.
-        fee_amount: trade_event.fee.saturating_add(trade_event.creator_fee),
+        // protocol + creator lamports it charged. Pumpfun charges in SOL
+        // regardless of direction.
+        fee_amount: ev.fee.saturating_add(ev.creator_fee),
         fee_mint: crate::tokens::WSOL,
         state_before: None,
         state_after: Some(CurveState::Reserves {
             in_side: reserve_in,
             out_side: reserve_out,
         }),
-    }))
+    }
 }
 
-/// Legacy v1 `create` extraction. 14-slot account layout; user
-/// (creator) at slot 7.
-fn extract_create(ix: &ParsedInstruction, params: &CreateParams) -> Option<ChainEvent> {
-    let accounts = match CreateAccounts::from_account_keys(&ix.accounts) {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(?e, "pumpfun create v1: account parse failed");
-            return None;
-        }
-    };
+impl ExtractsSwap for BuyParams {
+    type Event = TradeEvent;
 
-    Some(ChainEvent::TokenCreation(TokenCreation {
-        protocol: Protocol::Pumpfun,
-        mint: accounts.mint,
-        pool: accounts.bonding_curve,
-        creator: accounts.user,
-        name: params.name.clone(),
-        symbol: params.symbol.clone(),
-        uri: params.uri.clone(),
-    }))
+    fn swap(
+        &self,
+        event: &TradeEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        let id = identity_from_v1_buy(ix)?;
+        // Two independent sources of the same fact. They used to be compared
+        // and the mismatch merely logged, so a disagreement still reached the
+        // tape; it now refuses, matching every other corroboration check.
+        corroborate("mint", &event.mint, &id.mint)?;
+        Ok(swap_from(&id, event, ix, self.track_volume))
+    }
 }
 
-/// Modern v2 `create_v2` extraction. 16-slot layout; user
-/// (signer/payer) at slot 5. The instruction's args also carry an
-/// explicit `creator: Pubkey` field — used as the canonical creator
-/// since pumpfun records that on-chain. Falls back to
-/// `accounts.user` when the args creator is the default pubkey
-/// (rare; would indicate a malformed instruction).
-fn extract_create_v2(ix: &ParsedInstruction, params: &CreateV2Params) -> Option<ChainEvent> {
-    let accounts = match CreateV2Accounts::from_account_keys(&ix.accounts) {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(?e, "pumpfun create_v2: account parse failed");
-            return None;
-        }
-    };
+impl ExtractsSwap for BuyExactSolInParams {
+    type Event = TradeEvent;
 
-    // Prefer the explicit `creator` arg over the signer when it's
-    // populated — it's what pumpfun stores as canonical. They almost
-    // always match in practice; the rare divergence comes from
-    // launch-service proxies signing on behalf of an end user.
-    let creator = if params.creator == solana_program::pubkey::Pubkey::default() {
-        accounts.user
-    } else {
-        params.creator
-    };
-
-    Some(ChainEvent::TokenCreation(TokenCreation {
-        protocol: Protocol::Pumpfun,
-        mint: accounts.mint,
-        pool: accounts.bonding_curve,
-        creator,
-        name: params.name.clone(),
-        symbol: params.symbol.clone(),
-        uri: params.uri.clone(),
-    }))
+    fn swap(
+        &self,
+        event: &TradeEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        // Shares `buy`'s 16-slot account layout exactly; only the discriminator
+        // and the pinned side differ, and which instruction ran is preserved on
+        // the row so the two are never graded as one.
+        let id = identity_from_v1_buy(ix)?;
+        corroborate("mint", &event.mint, &id.mint)?;
+        Ok(swap_from(&id, event, ix, self.track_volume))
+    }
 }
 
-/// Find the `TradeEvent` self-CPI for the given Buy/Sell ix.
-///
-/// Modern pumpfun emits `TradeEvent` via Anchor `emit_cpi!`. The
-/// payload arrives as an **inner self-CPI** ix whose data is:
-///
-/// ```text
-/// [ 0..8 ] ANCHOR_EVENT_TAG              — every Anchor event, any program
-/// [ 8..16] TRADE_EVENT_DISCRIMINATOR     — which event
-/// [16.. ] borsh-serialised TradeEvent body
-/// ```
-///
-/// Legacy pumpfun used `emit!`, where the payload sits on the outer
-/// ix's `Program data:` log as `[TRADE_EVENT_DISCRIMINATOR || body]`
-/// — the event's own discriminator, no tag. We support both.
-///
-/// Both layers are checked on the modern path. Matching the tag alone
-/// says only "some Anchor event"; a 2026-08-11 sample of 25 mainnet
-/// transactions found 9 event self-CPIs (all TradeEvent) and a second,
-/// distinct discriminator in the same `Program data:` channel — so the
-/// `[8..16]` check is what keeps a sibling event out of the swap tape.
-/// A creator withdrawing their accrued fees.
-///
-/// Everything recorded comes from the event, not the instruction: the
-/// instruction takes no arguments, and mainnet sends it with more accounts than
-/// the IDL declares, so slot-reading it would be guessing. No event means no
-/// row — a withdrawal whose amount we cannot read is not worth a fabricated
-/// zero.
-fn extract_collect_creator_fee(
-    ix: &ParsedInstruction,
-    all_instructions: &[ParsedInstruction],
-) -> Option<ChainEvent> {
-    let ev: CollectCreatorFeeEvent = find_child_event(ix, all_instructions, &PUMPFUN_PROGRAM)
-        .or_else(|| {
-            warn!(
-                ix_index = ix.instruction_index,
-                "pumpfun collect_creator_fee: no CollectCreatorFeeEvent on any child"
-            );
-            None
+impl ExtractsSwap for SellParams {
+    type Event = TradeEvent;
+
+    fn swap(
+        &self,
+        event: &TradeEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        let id = identity_from_v1_sell(ix)?;
+        corroborate("mint", &event.mint, &id.mint)?;
+        Ok(swap_from(
+            &id,
+            event,
+            ix,
+            crate::protocols::OptionBool::None,
+        ))
+    }
+}
+
+impl ExtractsSwap for BuyV2Params {
+    type Event = TradeEvent;
+
+    fn swap(
+        &self,
+        event: &TradeEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        let id = identity_from_v2(ix, event)?;
+        // No `track_volume`: the IDL declares none for this instruction and 0 of
+        // 208 mainnet instructions carried one, unlike its v2 sibling.
+        Ok(swap_from(
+            &id,
+            event,
+            ix,
+            crate::protocols::OptionBool::None,
+        ))
+    }
+}
+
+impl ExtractsSwap for BuyExactQuoteInV2Params {
+    type Event = TradeEvent;
+
+    fn swap(
+        &self,
+        event: &TradeEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        let id = identity_from_v2(ix, event)?;
+        // Carried even though no IDL declares it — measured on 150 of 621
+        // mainnet instructions, and the only record that the trade opted in.
+        Ok(swap_from(&id, event, ix, self.track_volume))
+    }
+}
+
+impl ExtractsSwap for SellV2Params {
+    type Event = TradeEvent;
+
+    fn swap(
+        &self,
+        event: &TradeEvent,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<Swap, ExtractError> {
+        let id = identity_from_v2(ix, event)?;
+        Ok(swap_from(
+            &id,
+            event,
+            ix,
+            crate::protocols::OptionBool::None,
+        ))
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Creations
+// ─────────────────────────────────────────────────────────────────────────────
+
+impl ExtractsCreation for CreateParams {
+    fn creation(
+        &self,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<TokenCreation, ExtractError> {
+        let a = CreateAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "CreateAccounts",
+                source,
+            }
         })?;
+        Ok(TokenCreation {
+            protocol: Protocol::Pumpfun,
+            mint: a.mint,
+            pool: a.bonding_curve,
+            creator: a.user,
+            name: self.name.clone(),
+            symbol: self.symbol.clone(),
+            uri: self.uri.clone(),
+        })
+    }
+}
 
-    Some(ChainEvent::CreatorFee(CreatorFee {
+impl ExtractsCreation for CreateV2Params {
+    fn creation(
+        &self,
+        ix: &ParsedInstruction,
+        _ctx: &dyn ExtractContext,
+    ) -> Result<TokenCreation, ExtractError> {
+        let a = CreateV2Accounts::from_account_keys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "CreateV2Accounts",
+                source,
+            }
+        })?;
+        // Prefer the explicit `creator` argument over the signer where it is
+        // populated — it is what pumpfun stores as canonical. They almost always
+        // agree; the rare divergence is a launch service signing for an end user.
+        let creator = if self.creator == Pubkey::default() {
+            a.user
+        } else {
+            self.creator
+        };
+        Ok(TokenCreation {
+            protocol: Protocol::Pumpfun,
+            mint: a.mint,
+            pool: a.bonding_curve,
+            creator,
+            name: self.name.clone(),
+            symbol: self.symbol.clone(),
+            uri: self.uri.clone(),
+        })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Creator fees
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A creator draining their own vault. No mint: the vault accrues across every
+/// token that creator launched, so the chain makes no attribution to one.
+fn collected(ev: &CollectCreatorFeeEvent) -> CreatorFee {
+    CreatorFee {
         protocol: Protocol::Pumpfun,
         payout: CreatorPayout::Direct {
             creator: ev.creator,
         },
         amount: ev.creator_fee,
         quote_mint: ev.quote_mint,
-        // The vault accrues across every token this creator launched, so the
-        // chain genuinely does not attribute this to one mint.
         mint: None,
         timestamp: ev.timestamp,
-    }))
+    }
 }
 
-/// Accrued fees split across a sharing config.
-///
-/// Unlike a collect this one *is* attributable — the event names the mint and
-/// the bonding curve whose trading earned the fees.
-fn extract_distribute_creator_fees(
-    ix: &ParsedInstruction,
-    all_instructions: &[ParsedInstruction],
-) -> Option<ChainEvent> {
-    let ev: DistributeCreatorFeesEvent = find_child_event(ix, all_instructions, &PUMPFUN_PROGRAM)
-        .or_else(|| {
-        warn!(
-            ix_index = ix.instruction_index,
-            "pumpfun distribute_creator_fees: no DistributeCreatorFeesEvent on any child"
-        );
-        None
-    })?;
+impl ExtractsCreatorFee for CollectCreatorFeeParams {
+    type Event = CollectCreatorFeeEvent;
 
-    Some(ChainEvent::CreatorFee(CreatorFee {
+    fn creator_fee(
+        &self,
+        event: &CollectCreatorFeeEvent,
+        _ix: &ParsedInstruction,
+    ) -> Result<CreatorFee, ExtractError> {
+        Ok(collected(event))
+    }
+}
+
+impl ExtractsCreatorFee for CollectCreatorFeeV2Params {
+    type Event = CollectCreatorFeeEvent;
+
+    fn creator_fee(
+        &self,
+        event: &CollectCreatorFeeEvent,
+        _ix: &ParsedInstruction,
+    ) -> Result<CreatorFee, ExtractError> {
+        // Settles into a token account rather than a bare lamport transfer; the
+        // event, and so the recorded fact, is identical.
+        Ok(collected(event))
+    }
+}
+
+/// A vault split across a sharing config. Unlike a collect this one *is*
+/// attributable: the event names the mint whose trading earned the fees.
+fn distributed(ev: &DistributeCreatorFeesEvent) -> CreatorFee {
+    CreatorFee {
         protocol: Protocol::Pumpfun,
         payout: CreatorPayout::Shared {
             bonding_curve: ev.bonding_curve,
             sharing_config: ev.sharing_config,
             admin: ev.admin,
-            shareholders: ev.shareholders,
+            shareholders: ev.shareholders.clone(),
         },
         amount: ev.distributed,
         quote_mint: ev.quote_mint,
         mint: Some(ev.mint),
         timestamp: ev.timestamp,
-    }))
-}
-
-fn find_trade_event(
-    ix: &ParsedInstruction,
-    all_instructions: &[ParsedInstruction],
-) -> Option<TradeEvent> {
-    let outer_idx = ix.instruction_index;
-
-    // Modern: walk children for a pumpfun self-CPI whose data starts
-    // with the Anchor event envelope.
-    for child in all_instructions.iter() {
-        if child.parent_index != Some(outer_idx) {
-            continue;
-        }
-        if child.program_id != PUMPFUN_PROGRAM {
-            continue;
-        }
-        let Some(body) = event_body(&child.data, &TRADE_EVENT_DISCRIMINATOR) else {
-            continue;
-        };
-        if let Some(ev) = parse_trade_event_body(body) {
-            return Some(ev);
-        }
     }
-
-    // Legacy `emit!` fallback — payload on the outer ix's log stream,
-    // where Anchor writes `[event disc || body]` with no tag.
-    let payload = ix.find_data_log_with_discriminator(&TRADE_EVENT_DISCRIMINATOR)?;
-    parse_trade_event_body(payload)
 }
 
-/// Decode a `TradeEvent` body.
-///
-/// Borsh, against the field list the program's own IDL declares — 32 fields,
-/// where the hand-written predecessor read the first 121 bytes and stopped.
-/// That is why `ix_name`, the executed `track_volume`, the cashback and
-/// buyback splits and the shareholder table were all invisible: they sit past
-/// the offset it gave up at.
-fn parse_trade_event_body(body: &[u8]) -> Option<TradeEvent> {
-    use crate::parsing::event::ProtocolEvent;
-    TradeEvent::from_event_body(body)
-        .inspect_err(|e| warn!(len = body.len(), %e, "pumpfun TradeEvent body decode failed"))
-        .ok()
+impl ExtractsCreatorFee for DistributeCreatorFeesParams {
+    type Event = DistributeCreatorFeesEvent;
+
+    fn creator_fee(
+        &self,
+        event: &DistributeCreatorFeesEvent,
+        _ix: &ParsedInstruction,
+    ) -> Result<CreatorFee, ExtractError> {
+        Ok(distributed(event))
+    }
+}
+
+impl ExtractsCreatorFee for DistributeCreatorFeesV2Params {
+    type Event = DistributeCreatorFeesEvent;
+
+    fn creator_fee(
+        &self,
+        event: &DistributeCreatorFeesEvent,
+        _ix: &ParsedInstruction,
+    ) -> Result<CreatorFee, ExtractError> {
+        Ok(distributed(event))
+    }
 }
 
 // =============================================================================
@@ -452,8 +519,12 @@ fn parse_trade_event_body(body: &[u8]) -> Option<TradeEvent> {
 
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
+    use super::super::events::TRADE_EVENT_DISCRIMINATOR;
     use super::*;
     use crate::chain::NoContext;
+    #[allow(unused_imports)]
+    use crate::parsing::event::ProtocolEvent;
     use crate::parsing::{LogEntry, ParsedInstructionBuilder};
     use crate::protocols::pumpfun::{BUY_DISCRIMINATOR, CREATE_DISCRIMINATOR};
 
@@ -651,7 +722,8 @@ mod tests {
     /// tell them apart. This test replaced one named
     /// `..._skips_event_name_disc`, which asserted the extractor ignored that
     /// range — the defect written down as the specification. Reverting
-    /// `find_trade_event` to match on the tag alone fails this test.
+    /// Matching on the Anchor tag alone rather than the event's own
+    /// discriminator fails this test.
     #[test]
     fn a_different_anchor_event_is_not_decoded_as_a_trade() {
         let event = sample_trade_event(true);
@@ -857,7 +929,11 @@ mod tests {
 
 #[cfg(test)]
 mod trade_event_fixture {
+    #[allow(unused_imports)]
+    use super::super::events::TRADE_EVENT_DISCRIMINATOR;
     use super::*;
+    #[allow(unused_imports)]
+    use crate::parsing::event::ProtocolEvent;
 
     /// A real mainnet `TradeEvent` decodes through borsh against the field
     /// list the IDL declares.
@@ -885,7 +961,7 @@ mod trade_event_fixture {
         let body = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &fx.body_b64)
             .expect("body is base64");
 
-        let ev = parse_trade_event_body(&body).expect("real body must decode");
+        let ev = TradeEvent::from_event_body(&body).expect("real body must decode");
         let want = &fx.expected;
         assert_eq!(ev.sol_amount, want["sol_amount"].as_u64().unwrap());
         assert_eq!(ev.fee, want["fee"].as_u64().unwrap());
@@ -919,16 +995,23 @@ mod trade_event_fixture {
             fx["body_b64"].as_str().unwrap(),
         )
         .unwrap();
-        assert!(parse_trade_event_body(&body).is_some());
+        assert!(TradeEvent::from_event_body(&body).is_ok());
         body.push(0);
-        assert!(parse_trade_event_body(&body).is_none());
+        assert!(
+            TradeEvent::from_event_body(&body).is_err(),
+            "trailing bytes must be refused, not ignored"
+        );
     }
 }
 
 #[cfg(test)]
 mod v2_identity {
+    #[allow(unused_imports)]
+    use super::super::events::TRADE_EVENT_DISCRIMINATOR;
     use super::*;
     use crate::chain::NoContext;
+    #[allow(unused_imports)]
+    use crate::parsing::event::ProtocolEvent;
     use crate::parsing::ParsedInstructionBuilder;
     use crate::protocols::pumpfun::accounts::derive_bonding_curve_pda;
     use crate::protocols::pumpfun::SELL_V2_DISCRIMINATOR;
