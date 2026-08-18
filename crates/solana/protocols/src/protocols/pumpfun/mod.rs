@@ -36,6 +36,16 @@
 //!     BuyParams::new(output.amount_out, output.amount_in),
 //! )?;
 //! ```
+//!
+//! # Status: reference implementation
+//!
+//! This module is the shape every other protocol is migrating toward:
+//! generated instruction dispatch, a derived and identity-checked account
+//! layout, borsh events verified against the program IDL at compile time, and
+//! extraction declared per instruction through the `Extracts*` traits with every
+//! failure typed and counted.
+//!
+//! Copy from here when adding a protocol.
 
 mod accounts;
 mod constants;

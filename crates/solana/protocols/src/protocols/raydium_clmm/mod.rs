@@ -35,6 +35,15 @@
 //! let ix = SwapV2Builder::buy(&keys, &user, pool.tick_current, 1_000_000_000, 900_000);
 //! ```
 
+//!
+//! # Status: partial
+//!
+//! Instruction dispatch is generated and the account layout is derived and
+//! identity-checked, but events and extraction are still hand-written and no
+//! IDL verification runs against this program. Correct as far as it goes.
+//!
+//! **The reference implementation is `protocols::pumpfun`** — copy its shape,
+//! not this one. See the crate README's coverage table for what differs.
 pub mod accounts;
 mod constants;
 mod instructions;

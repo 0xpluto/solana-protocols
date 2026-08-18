@@ -18,6 +18,16 @@
 //! the extractor walks `parent_index` from the inner event ix up to the
 //! outer swap to pull mint / trader accounts. See [`extract`].
 
+//!
+//! # Status: legacy shape
+//!
+//! Predates the current design: dispatch, account layouts and constants here
+//! are hand-written rather than generated or derived. It decodes correctly and
+//! is used in production, but a transcribed constant is this domain's most
+//! expensive bug class and nothing here is checked against an IDL.
+//!
+//! **The reference implementation is `protocols::pumpfun`** — copy its shape,
+//! not this one. See the crate README's coverage table for what differs.
 pub mod constants;
 pub mod events;
 pub mod extract;

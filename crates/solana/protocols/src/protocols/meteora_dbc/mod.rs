@@ -18,6 +18,15 @@
 //! - Swap instruction parsing (swap + swap2 with all modes)
 //! - State structs and curve math deferred
 
+//!
+//! # Status: partial
+//!
+//! Instruction dispatch is generated and the account layout is derived and
+//! identity-checked, but events and extraction are still hand-written and no
+//! IDL verification runs against this program. Correct as far as it goes.
+//!
+//! **The reference implementation is `protocols::pumpfun`** — copy its shape,
+//! not this one. See the crate README's coverage table for what differs.
 pub mod accounts;
 pub mod constants;
 mod instructions;

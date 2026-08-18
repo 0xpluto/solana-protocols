@@ -41,6 +41,16 @@
 //! let output = pool_with_reserves.calculate_swap(&SwapParams::buy(100_000_000))?;
 //! ```
 
+//!
+//! # Status: legacy shape
+//!
+//! Predates the current design: dispatch, account layouts and constants here
+//! are hand-written rather than generated or derived. It decodes correctly and
+//! is used in production, but a transcribed constant is this domain's most
+//! expensive bug class and nothing here is checked against an IDL.
+//!
+//! **The reference implementation is `protocols::pumpfun`** — copy its shape,
+//! not this one. See the crate README's coverage table for what differs.
 mod accounts;
 mod constants;
 mod instructions;

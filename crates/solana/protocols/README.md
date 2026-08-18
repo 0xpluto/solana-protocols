@@ -7,6 +7,14 @@ golden fixtures captured from mainnet — not transcribed from an IDL. IDLs go
 stale, and a hand-copied discriminator is the most expensive bug class in this
 domain: a decoder that silently matches nothing looks exactly like a healthy one.
 
+**Two tiers, and the difference is visible in the source.** Pumpfun and PumpSwap
+are the reference implementations: everything above is true of them end to end.
+The other seven protocols were written earlier, decode correctly, and have not
+been migrated to that shape yet — several still carry hand-written account
+layouts and transcribed constants. Copy from `protocols/pumpfun/`, not from
+whichever protocol you happen to open first. Each unmigrated module says so in
+its own docs.
+
 ## Quick start
 
 ```rust
@@ -59,19 +67,35 @@ what does a swap cost right now, and what instruction executes it.
 
 ## Protocol coverage
 
-| Protocol | Decode | Swap math | Cache-composed quote | Instruction build |
-|---|:---:|:---:|:---:|:---:|
-| Pumpfun | ✓ | ✓ | ✓ | ✓ |
-| PumpSwap | ✓ | ✓ | ✓ | ✓ |
-| Raydium V4 | ✓ | ✓ | — | — |
-| Raydium CPMM | ✓ | ✓ | — | — |
-| Raydium Launchpad | ✓ | ✓ | — | — |
-| Meteora DBC | ✓ | ✓ | — | — |
-| Meteora DLMM | ✓ | bin-walk¹ | — | — |
-| Raydium CLMM | ✓ | — | — | — |
-| Meteora DAMM v2 | ✓ | — | — | — |
+| Protocol | Shape | Decode | Swap math | Cache-composed quote | Instruction build |
+|---|---|:---:|:---:|:---:|:---:|
+| Pumpfun | **reference** | ✓ | ✓ | ✓ | ✓ |
+| PumpSwap | **reference** | ✓ | ✓ | ✓ | ✓ |
+| Raydium CPMM | partial² | ✓ | ✓ | — | — |
+| Raydium Launchpad | partial² | ✓ | ✓ | — | — |
+| Meteora DBC | partial² | ✓ | ✓ | — | — |
+| Raydium CLMM | partial² | ✓ | — | — | — |
+| Raydium V4 | legacy³ | ✓ | ✓ | — | — |
+| Meteora DLMM | legacy³ | ✓ | bin-walk¹ | — | — |
+| Meteora DAMM v2 | legacy³ | ✓ | — | — | — |
 
 ¹ Standalone `quote_exact_in` / `quote_exact_out`; not yet behind the `SwapMath` trait.
+
+² **partial** — generated instruction dispatch and a derived, identity-checked
+account layout, but events and extraction are still hand-written and no IDL
+verification runs.
+
+³ **legacy** — predates the current shape entirely: hand-rolled dispatch,
+hand-written account structs, transcribed constants. Correct as far as it goes
+and used in production, but not the pattern to copy.
+
+Concretely, per protocol:
+
+| | generated dispatch | derived account layout | IDL-verified events | trait-based extraction |
+|---|:---:|:---:|:---:|:---:|
+| Pumpfun / PumpSwap | ✓ | ✓ | ✓ | ✓ |
+| Raydium CPMM / CLMM / Launchpad, Meteora DBC | ✓ | ✓ | — | — |
+| Raydium V4, Meteora DLMM, Meteora DAMM v2 | — | — | — | — |
 
 ### Measured parse completeness
 
@@ -119,6 +143,13 @@ Stated rather than left to be discovered:
   keys on quote-reserve SOL while on-chain tiers key on a market-cap threshold.
   See `Fees::TIER_KEY_UNSETTLED`.
 - Instruction building is fixture-replay-verified for Pumpfun and PumpSwap only.
+- Roughly 70 `collect_creator_fee` instructions per 150s of mainnet emit no
+  `CollectCreatorFeeEvent`, so the payout is visible but its amount is not.
+  Counted as `event_missing` rather than dropped; unexplained so far, and a
+  zero-balance collect is the obvious hypothesis.
+- Extraction failures are counted by (protocol, kind) via
+  `chain::extract_failure_tally`. Nothing exits quietly, but a non-zero count
+  means events are missing from your stream — read it rather than assuming.
 
 ## Repository
 
