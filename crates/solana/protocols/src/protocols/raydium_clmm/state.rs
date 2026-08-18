@@ -8,6 +8,9 @@
 //! mints and vault addresses are also stored here.
 
 use serde::{Deserialize, Serialize};
+use solana_protocols_macros::OnchainState;
+
+use super::constants::CLMM_POOL_STATE_DISCRIMINATOR;
 use solana_program::pubkey::Pubkey;
 
 /// Raydium CLMM pool state (on-chain account data).
@@ -15,7 +18,9 @@ use solana_program::pubkey::Pubkey;
 /// Size: ~1544 bytes (excluding discriminator). Fields exactly match the
 /// on-chain layout for correct bincode deserialization.
 #[repr(C)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, OnchainState)]
+#[state(discriminator = CLMM_POOL_STATE_DISCRIMINATOR)]
+#[state(fixtures("raydium_clmm/pool_account.json"))]
 pub struct PoolState {
     /// PDA bump seed.
     pub bump: [u8; 1],
@@ -97,7 +102,8 @@ pub struct PoolState {
 
 /// Reward info for a single reward token.
 #[repr(C)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, OnchainState)]
+#[state(no_discriminator)]
 pub struct RewardInfo {
     /// Reward state (0=uninitialized, 1=initialized, 2=opening, 3=ended).
     pub reward_state: u8,
@@ -162,19 +168,19 @@ pub struct TickState {
 }
 
 impl PoolState {
-    /// Parse pool state from account data (after stripping 8-byte discriminator).
+    /// Read this account, verifying identity first.
+    ///
+    /// Delegates to the `OnchainState` impl the derive generates. It used to
+    /// strip eight bytes and hand the rest to bincode without ever looking at
+    /// the discriminator — so any account at least this long decoded, including
+    /// other programs' accounts, silently producing plausible garbage.
     ///
     /// # Errors
     ///
-    /// Returns error if data is too short or deserialization fails.
+    /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self, String> {
-        if data.len() < 8 {
-            return Err("Account data too short for discriminator".to_string());
-        }
-        // Skip 8-byte Anchor discriminator
-        let pool_data = &data[8..];
-        bincode::deserialize(pool_data)
-            .map_err(|e| format!("Failed to deserialize CLMM pool state: {e}"))
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data)
+            .map_err(|e| e.to_string())
     }
 
     /// Check if the pool is active (status == 0 or status-specific check).

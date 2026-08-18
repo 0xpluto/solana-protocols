@@ -6,6 +6,9 @@
 //! Deserialization: bincode after stripping 8-byte Anchor discriminator.
 
 use serde::{Deserialize, Serialize};
+use solana_protocols_macros::OnchainState;
+
+use super::constants::DBC_VIRTUAL_POOL_DISCRIMINATOR;
 use solana_program::pubkey::Pubkey;
 
 use crate::error::{Error, Result};
@@ -18,7 +21,8 @@ const Q64_F64: f64 = 18_446_744_073_709_551_616.0;
 
 /// Volatility tracker for dynamic fee calculation.
 /// Size: 64 bytes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, OnchainState)]
+#[state(no_discriminator)]
 pub struct VolatilityTracker {
     /// Last fee update timestamp.
     pub last_update_timestamp: u64,
@@ -34,7 +38,8 @@ pub struct VolatilityTracker {
 
 /// Accumulated fee metrics.
 /// Size: 32 bytes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, OnchainState)]
+#[state(no_discriminator)]
 pub struct PoolMetrics {
     /// Total protocol base token fees.
     pub total_protocol_base_fee: u64,
@@ -76,7 +81,9 @@ impl MigrationProgress {
 /// Meteora DBC VirtualPool (main pool account state).
 ///
 /// Size: 416 bytes (without discriminator).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[state(discriminator = DBC_VIRTUAL_POOL_DISCRIMINATOR)]
+#[state(fixtures("meteora_dbc/pool_account.json"))]
 pub struct VirtualPool {
     /// Volatility tracker for dynamic fees.
     pub volatility_tracker: VolatilityTracker,
@@ -141,19 +148,27 @@ pub struct VirtualPool {
 }
 
 impl VirtualPool {
-    /// Parse pool state from on-chain account data.
+    /// Read this account, verifying identity first.
     ///
-    /// Strips the 8-byte Anchor discriminator and deserializes with bincode.
+    /// Delegates to the `OnchainState` impl the derive generates, so the
+    /// discriminator check, the derived length and the golden-fixture test all
+    /// apply here rather than only to callers who happen to use the trait.
+    ///
+    /// # Errors
+    ///
+    /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        if data.len() < DBC_VIRTUAL_POOL_ACCOUNT_SIZE {
-            return Err(Error::AccountDataTooShort {
-                expected: DBC_VIRTUAL_POOL_ACCOUNT_SIZE,
-                actual: data.len(),
-            });
-        }
-        let pool_data = &data[8..];
-        bincode::deserialize(pool_data)
-            .map_err(|e| Error::parse_error(format!("Failed to deserialize DBC VirtualPool: {e}")))
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
+            |e| match e {
+                crate::parsing::state::AccountParseError::TooShort { len, need } => {
+                    Error::AccountDataTooShort {
+                        expected: need,
+                        actual: len,
+                    }
+                }
+                other => Error::invalid_account_data(other.to_string()),
+            },
+        )
     }
 
     /// Check if the pool is active (not migrated).
@@ -230,7 +245,10 @@ mod tests {
     }
 
     fn make_account_data(pool: &VirtualPool) -> Vec<u8> {
-        let mut data = vec![0u8; 8]; // discriminator
+        // The real discriminator, not eight zeros: identity is now checked
+        // inside the decoder, and a synthetic account that skips it is testing
+        // a path no real caller takes.
+        let mut data = DBC_VIRTUAL_POOL_DISCRIMINATOR.to_vec();
         data.extend_from_slice(&bincode::serialize(pool).unwrap());
         data
     }

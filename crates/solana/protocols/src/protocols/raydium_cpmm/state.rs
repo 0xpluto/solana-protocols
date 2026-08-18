@@ -7,6 +7,9 @@
 //! Deserialization: bincode after stripping 8-byte Anchor discriminator.
 
 use serde::{Deserialize, Serialize};
+use solana_protocols_macros::OnchainState;
+
+use super::constants::CPMM_POOL_STATE_DISCRIMINATOR;
 use solana_program::pubkey::Pubkey;
 
 use crate::error::{Error, Result};
@@ -31,7 +34,9 @@ pub enum PoolStatusBitIndex {
 /// Reserves are NOT stored in the pool account — they live in vault token
 /// accounts (token_0_vault, token_1_vault). Use `spot_price_with_vaults()`
 /// when vault balances are available.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[state(discriminator = CPMM_POOL_STATE_DISCRIMINATOR)]
+#[state(fixtures("raydium_cpmm/pool_account.json"))]
 pub struct CpmmPoolState {
     /// AMM config account.
     pub amm_config: Pubkey,
@@ -92,19 +97,27 @@ pub struct CpmmPoolState {
 }
 
 impl CpmmPoolState {
-    /// Parse pool state from on-chain account data.
+    /// Read this account, verifying identity first.
     ///
-    /// Strips the 8-byte Anchor discriminator and deserializes with bincode.
+    /// Delegates to the `OnchainState` impl the derive generates, so the
+    /// discriminator check, the derived length and the golden-fixture test all
+    /// apply here rather than only to callers who happen to use the trait.
+    ///
+    /// # Errors
+    ///
+    /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        if data.len() < CPMM_POOL_ACCOUNT_MIN_SIZE {
-            return Err(Error::AccountDataTooShort {
-                expected: CPMM_POOL_ACCOUNT_MIN_SIZE,
-                actual: data.len(),
-            });
-        }
-        let pool_data = &data[8..];
-        bincode::deserialize(pool_data)
-            .map_err(|e| Error::parse_error(format!("Failed to deserialize CPMM pool: {e}")))
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
+            |e| match e {
+                crate::parsing::state::AccountParseError::TooShort { len, need } => {
+                    Error::AccountDataTooShort {
+                        expected: need,
+                        actual: len,
+                    }
+                }
+                other => Error::invalid_account_data(other.to_string()),
+            },
+        )
     }
 
     /// Check if swap operations are enabled (status bit 2 not set).
@@ -205,7 +218,10 @@ mod tests {
     }
 
     fn make_account_data(pool: &CpmmPoolState) -> Vec<u8> {
-        let mut data = vec![0u8; 8]; // discriminator
+        // The real discriminator, not eight zeros: identity is now checked
+        // inside the decoder, and a synthetic account that skips it is testing
+        // a path no real caller takes.
+        let mut data = CPMM_POOL_STATE_DISCRIMINATOR.to_vec();
         data.extend_from_slice(&bincode::serialize(pool).unwrap());
         data
     }

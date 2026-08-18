@@ -8,6 +8,9 @@
 //! Trailing 62-byte padding is omitted (exceeds serde array limit).
 
 use serde::{Deserialize, Serialize};
+use solana_protocols_macros::OnchainState;
+
+use super::constants::LAUNCHPAD_POOL_STATE_DISCRIMINATOR;
 use solana_program::pubkey::Pubkey;
 
 use crate::error::{Error, Result};
@@ -40,7 +43,8 @@ impl PoolStatus {
 }
 
 /// Vesting schedule for token unlocks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[state(no_discriminator)]
 pub struct VestingSchedule {
     /// Total locked token amount.
     pub total_locked_amount: u64,
@@ -61,7 +65,9 @@ pub struct VestingSchedule {
 /// how reserves map to price.
 ///
 /// NOTE: Trailing 62-byte padding omitted — bincode ignores extra bytes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[state(discriminator = LAUNCHPAD_POOL_STATE_DISCRIMINATOR)]
+#[state(fixtures("raydium_launchpad/pool_account.json"))]
 pub struct LaunchpadPoolState {
     /// Epoch counter.
     pub epoch: u64,
@@ -120,20 +126,27 @@ pub struct LaunchpadPoolState {
 }
 
 impl LaunchpadPoolState {
-    /// Parse pool state from on-chain account data.
+    /// Read this account, verifying identity first.
     ///
-    /// Strips the 8-byte Anchor discriminator and deserializes with bincode.
-    /// Trailing 62-byte padding is not deserialized.
+    /// Delegates to the `OnchainState` impl the derive generates, so the
+    /// discriminator check, the derived length and the golden-fixture test all
+    /// apply here rather than only to callers who happen to use the trait.
+    ///
+    /// # Errors
+    ///
+    /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        if data.len() < LAUNCHPAD_POOL_ACCOUNT_MIN_SIZE {
-            return Err(Error::AccountDataTooShort {
-                expected: LAUNCHPAD_POOL_ACCOUNT_MIN_SIZE,
-                actual: data.len(),
-            });
-        }
-        let pool_data = &data[8..];
-        bincode::deserialize(pool_data)
-            .map_err(|e| Error::parse_error(format!("Failed to deserialize Launchpad pool: {e}")))
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
+            |e| match e {
+                crate::parsing::state::AccountParseError::TooShort { len, need } => {
+                    Error::AccountDataTooShort {
+                        expected: need,
+                        actual: len,
+                    }
+                }
+                other => Error::invalid_account_data(other.to_string()),
+            },
+        )
     }
 
     /// Get the parsed pool status.
@@ -223,7 +236,10 @@ mod tests {
     }
 
     fn make_account_data(pool: &LaunchpadPoolState) -> Vec<u8> {
-        let mut data = vec![0u8; 8]; // discriminator
+        // The real discriminator, not eight zeros: identity is now checked
+        // inside the decoder, and a synthetic account that skips it is testing
+        // a path no real caller takes.
+        let mut data = LAUNCHPAD_POOL_STATE_DISCRIMINATOR.to_vec();
         let serialized = bincode::serialize(pool).unwrap();
         data.extend_from_slice(&serialized);
         // Add trailing padding that would exist on-chain

@@ -19,7 +19,17 @@ pub const COLLECT_COIN_CREATOR_FEE_EVENT_DISCRIMINATOR: [u8; 8] =
     solana_protocols_macros::anchor_event_discriminator!("CollectCoinCreatorFeeEvent");
 
 /// A coin creator withdrawing accrued AMM fees.
-#[derive(Debug, Clone, Default, PartialEq, Eq, borsh::BorshDeserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    solana_protocols_macros::EventLayout,
+)]
+#[idl(program = "pump_amm", event = "CollectCoinCreatorFeeEvent")]
 pub struct CollectCoinCreatorFeeEvent {
     /// `timestamp` — declared by the program IDL.
     pub timestamp: i64,

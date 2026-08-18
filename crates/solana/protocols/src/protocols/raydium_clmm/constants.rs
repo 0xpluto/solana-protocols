@@ -68,6 +68,15 @@ pub const TICK_ARRAY_BITMAP_SIZE: i32 = 512;
 /// Fee rate denominator (1,000,000).
 pub const FEE_RATE_DENOMINATOR: u64 = 1_000_000;
 
+/// `sha256("account:PoolState")[..8]`, derived at compile time.
+///
+/// Account identity on Solana is (owner program, discriminator, PDA) — the
+/// discriminator alone is not unique. `account:PoolState` is shared by at least
+/// three programs in this crate, so a decoder that checks only these eight bytes
+/// will happily read one program's account as another's.
+pub const CLMM_POOL_STATE_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_account_discriminator!("PoolState");
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -118,7 +118,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
              whether the account carries a prefix is a layout fact, not a default",
         );
     }
-    if fixtures.is_empty() {
+    // A type with no discriminator is not independently addressable on chain:
+    // it is a layout embedded in something else, so no account of it exists to
+    // capture. Its field list is proven by the fixture of whatever embeds it,
+    // which is where a wrong width actually shows up. Requiring a fixture here
+    // would mean inventing one, and a hand-written fixture proves only that the
+    // struct agrees with itself.
+    if fixtures.is_empty() && !no_discriminator {
         return err(
             &name,
             "declare #[state(fixtures(\"path/to.json\", …))] — the field list *is* the byte \
@@ -220,16 +226,23 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     // --- sizes --------------------------------------------------------------
     let disc_len: usize = if no_discriminator { 0 } else { 8 };
-    let mut required_len = disc_len;
+    let mut required_len: TokenStream2 = quote!(#disc_len);
     let mut core_reads: Vec<TokenStream2> = Vec::new();
     for spec in specs.iter().filter(|s| s.added_in.is_none()) {
-        required_len += spec.skip;
+        let skip = spec.skip;
+        required_len = quote!((#required_len + #skip));
         let size = match type_size(&spec.ty) {
             Some(n) => n,
             None => return err(&spec.ident, &unsupported(&spec.ty)),
         };
-        core_reads.push(read_stmt(&spec.ident, &spec.ty, required_len, size, false));
-        required_len += size;
+        core_reads.push(read_stmt(
+            &spec.ident,
+            &spec.ty,
+            &required_len,
+            &size,
+            false,
+        ));
+        required_len = quote!((#required_len + #size));
     }
 
     // --- version groups, in declaration order -------------------------------
@@ -245,24 +258,25 @@ pub fn derive(input: TokenStream) -> TokenStream {
     }
 
     let mut group_blocks: Vec<TokenStream2> = Vec::new();
-    let mut cursor = required_len;
+    let mut cursor = required_len.clone();
     for (group_name, members) in groups.values() {
-        let start = cursor;
+        let start = cursor.clone();
         let mut reads: Vec<TokenStream2> = Vec::new();
         let mut nones: Vec<TokenStream2> = Vec::new();
-        let mut off = cursor;
+        let mut off = cursor.clone();
         for spec in members {
-            off += spec.skip;
+            let skip = spec.skip;
+            off = quote!((#off + #skip));
             let size = match type_size(&spec.ty) {
                 Some(n) => n,
                 None => return err(&spec.ident, &unsupported(&spec.ty)),
             };
-            reads.push(read_stmt(&spec.ident, &spec.ty, off, size, true));
+            reads.push(read_stmt(&spec.ident, &spec.ty, &off, &size, true));
             let id = &spec.ident;
             nones.push(quote! { #id = ::solana_protocols::parsing::state::Legacy::Absent; });
-            off += size;
+            off = quote!((#off + #size));
         }
-        let end = off;
+        let end = off.clone();
         let decls: Vec<TokenStream2> = members
             .iter()
             .map(|s| {
@@ -300,32 +314,14 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
     let all_idents: Vec<&Ident> = specs.iter().map(|s| &s.ident).collect();
     let test_mod = quote::format_ident!("__onchain_layout_{}", name.to_string().to_lowercase());
-    let first_fixture = fixtures[0].clone();
-
-    quote! {
-        impl ::solana_protocols::parsing::state::OnchainState for #name {
-            const REQUIRED_LEN: usize = #required_len;
-
-            fn from_account_data(
-                data: &[u8],
-            ) -> ::core::result::Result<Self, ::solana_protocols::parsing::state::AccountParseError> {
-                if data.len() < Self::REQUIRED_LEN {
-                    return Err(::solana_protocols::parsing::state::AccountParseError::TooShort {
-                        len: data.len(),
-                        need: Self::REQUIRED_LEN,
-                    });
-                }
-                #disc_check
-                #(#core_reads)*
-                #(#group_blocks)*
-                Ok(Self { #(#all_idents),* })
-            }
-        }
-
-        #[cfg(test)]
-        mod #test_mod {
-            use super::*;
-
+    // Nested layouts have no fixtures (see above), so they get no
+    // fixture-driven tests either. Their width is still checked — by the
+    // fixture of every account that embeds them.
+    let fixture_tests = if fixtures.is_empty() {
+        quote!()
+    } else {
+        let first_fixture = fixtures[0].clone();
+        quote! {
             /// Every declared size variant decodes, and its pinned fields match.
             ///
             /// Emitted by the derive, so a layout cannot ship unproven — the
@@ -352,6 +348,34 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 assert!(<#name as OnchainState>::from_account_data(short).is_err());
             }
         }
+    };
+
+    quote! {
+        impl ::solana_protocols::parsing::state::OnchainState for #name {
+            const REQUIRED_LEN: usize = #required_len;
+
+            fn from_account_data(
+                data: &[u8],
+            ) -> ::core::result::Result<Self, ::solana_protocols::parsing::state::AccountParseError> {
+                if data.len() < Self::REQUIRED_LEN {
+                    return Err(::solana_protocols::parsing::state::AccountParseError::TooShort {
+                        len: data.len(),
+                        need: Self::REQUIRED_LEN,
+                    });
+                }
+                #disc_check
+                #(#core_reads)*
+                #(#group_blocks)*
+                Ok(Self { #(#all_idents),* })
+            }
+        }
+
+        #[cfg(test)]
+        mod #test_mod {
+            use super::*;
+
+            #fixture_tests
+        }
     }
     .into()
 }
@@ -372,37 +396,84 @@ fn legacy_inner(ty: &Type) -> Option<Type> {
     }
 }
 
-fn type_size(ty: &Type) -> Option<usize> {
+/// A field's width, as an expression rather than a number.
+///
+/// Expressions instead of `usize` because a fixed-width layout composes from
+/// fixed-width parts, and one of those parts may be another type: a nested
+/// struct contributes `<T as OnchainState>::REQUIRED_LEN`, which is not known
+/// here. Making every width an expression means nested structs, arrays of
+/// structs and arrays of primitives all fall out of the same rule instead of
+/// each needing a case.
+///
+/// Returns `None` only for genuinely variable-length types (`Vec`, `String`),
+/// which need borsh rather than an offset walk.
+fn type_size(ty: &Type) -> Option<TokenStream2> {
     if let Type::Array(arr) = ty {
-        if let syn::Expr::Lit(syn::ExprLit {
+        let syn::Expr::Lit(syn::ExprLit {
             lit: syn::Lit::Int(n),
             ..
         }) = &arr.len
-        {
-            return n.base10_parse::<usize>().ok();
-        }
-        return None;
+        else {
+            return None;
+        };
+        let count: usize = n.base10_parse().ok()?;
+        // Element width times count. This used to return the *count*, which is
+        // right for `[u8; N]` and silently wrong for every other element type —
+        // `[u64; 16]` was sized as 16 bytes rather than 128.
+        let elem = type_size(&arr.elem)?;
+        return Some(quote!((#count * (#elem))));
     }
-    Some(match quote!(#ty).to_string().as_str() {
+    let bytes: usize = match quote!(#ty).to_string().as_str() {
         "u8" | "i8" | "bool" => 1,
         "u16" | "i16" => 2,
         "u32" | "i32" => 4,
         "u64" | "i64" => 8,
         "u128" | "i128" => 16,
         "Pubkey" | "solana_program :: pubkey :: Pubkey" => 32,
-        _ => return None,
-    })
+        // Anything else nameable is treated as a nested fixed-width layout and
+        // must say how wide it is. If it does not implement `OnchainState` the
+        // error lands on the field, naming the type.
+        _ => {
+            return match ty {
+                Type::Path(_) => Some(
+                    quote!(<#ty as ::solana_protocols::parsing::state::OnchainState>::REQUIRED_LEN),
+                ),
+                _ => None,
+            }
+        }
+    };
+    Some(quote!(#bytes))
 }
 
-fn read_stmt(
-    ident: &Ident,
-    ty: &Type,
-    offset: usize,
-    size: usize,
-    wrap_some: bool,
-) -> TokenStream2 {
-    let end = offset + size;
-    let raw = match quote!(#ty).to_string().as_str() {
+/// The value expression for one field at `offset`.
+///
+/// Every shape composes from this one reader: a primitive reads its bytes, an
+/// array maps the reader over its elements, and a nested layout delegates to its
+/// own `OnchainState`. Adding a case here is how a new field shape becomes
+/// available to every protocol at once, rather than by hand in each decoder.
+fn read_value(ty: &Type, offset: &TokenStream2) -> Option<TokenStream2> {
+    // `[u8; N]` copies wholesale — the common case, and the only array where a
+    // byte slice already has the right shape.
+    if let Type::Array(arr) = ty {
+        let size = type_size(ty)?;
+        let end = quote!((#offset + #size));
+        let elem_ty = &arr.elem;
+        if quote!(#elem_ty).to_string() == "u8" {
+            return Some(quote! {
+                data[#offset..#end].try_into().expect("length checked above")
+            });
+        }
+        let elem = &arr.elem;
+        let elem_len = type_size(elem)?;
+        let each = read_value(elem, &quote!((#offset + n * #elem_len)))?;
+        return Some(quote! {
+            ::core::array::from_fn(|n| { let _ = n; #each })
+        });
+    }
+
+    let size = type_size(ty)?;
+    let end = quote!((#offset + #size));
+    Some(match quote!(#ty).to_string().as_str() {
         "u8" => quote!(data[#offset]),
         "i8" => quote!(data[#offset] as i8),
         "bool" => quote!(data[#offset] != 0),
@@ -411,15 +482,30 @@ fn read_stmt(
                 data[#offset..#end].try_into().expect("length checked above"),
             )
         },
-        _ if matches!(ty, Type::Array(_)) => quote! {
-            data[#offset..#end].try_into().expect("length checked above")
-        },
-        _ => quote! {
+        "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128" => quote! {
             <#ty>::from_le_bytes(
                 data[#offset..#end].try_into().expect("length checked above"),
             )
         },
-    };
+        // A nested fixed-width layout reads itself, so a bug in it surfaces
+        // once rather than in every struct that embeds it.
+        _ => quote! {
+            <#ty as ::solana_protocols::parsing::state::OnchainState>::from_account_data(
+                &data[#offset..#end],
+            )
+            .expect("length checked above")
+        },
+    })
+}
+
+fn read_stmt(
+    ident: &Ident,
+    ty: &Type,
+    offset: &TokenStream2,
+    _size: &TokenStream2,
+    wrap_some: bool,
+) -> TokenStream2 {
+    let raw = read_value(ty, offset).unwrap_or_else(|| quote!(compile_error!("unsupported field")));
     let value = if wrap_some {
         quote!(::solana_protocols::parsing::state::Legacy::Present(#raw))
     } else {

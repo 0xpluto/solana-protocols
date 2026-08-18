@@ -30,6 +30,15 @@ pub const SWAP2_DISCRIMINATOR: [u8; 8] = [65, 75, 63, 76, 235, 91, 91, 136];
 /// Fee rate denominator (1 billion = 100%).
 pub const FEE_DENOMINATOR: u64 = 1_000_000_000;
 
+/// `sha256("account:VirtualPool")[..8]`, derived at compile time.
+///
+/// Account identity on Solana is (owner program, discriminator, PDA) — the
+/// discriminator alone is not unique. `account:PoolState` is shared by at least
+/// three programs in this crate, so a decoder that checks only these eight bytes
+/// will happily read one program's account as another's.
+pub const DBC_VIRTUAL_POOL_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_account_discriminator!("VirtualPool");
+
 #[cfg(test)]
 mod tests {
     use super::*;

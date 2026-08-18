@@ -28,7 +28,17 @@ pub const DISTRIBUTE_CREATOR_FEES_EVENT_DISCRIMINATOR: [u8; 8] =
 /// Note what is *absent*: no mint. The instruction drains the creator's vault,
 /// which accrues across every token that creator launched, so this event
 /// cannot be attributed to one token — only to a creator and a denomination.
-#[derive(Debug, Clone, Default, PartialEq, Eq, borsh::BorshDeserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    solana_protocols_macros::EventLayout,
+)]
+#[idl(program = "pump", event = "CollectCreatorFeeEvent")]
 pub struct CollectCreatorFeeEvent {
     /// `timestamp` — declared by the program IDL.
     pub timestamp: i64,
@@ -49,7 +59,17 @@ impl ProtocolEvent for CollectCreatorFeeEvent {
 ///
 /// Unlike a collect, this one *is* attributable: it names the mint and the
 /// bonding curve whose trading earned the fees.
-#[derive(Debug, Clone, Default, PartialEq, Eq, borsh::BorshDeserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    PartialEq,
+    Eq,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    solana_protocols_macros::EventLayout,
+)]
+#[idl(program = "pump", event = "DistributeCreatorFeesEvent")]
 pub struct DistributeCreatorFeesEvent {
     /// `timestamp` — declared by the program IDL.
     pub timestamp: i64,

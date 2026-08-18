@@ -28,7 +28,15 @@ pub const TRADE_EVENT_DISCRIMINATOR: [u8; 8] =
 /// A `#[derive(LogParser)]` used to sit here generating a *second* one that
 /// nothing called — and being field-derived, it stopped at the pre-fee 121-byte
 /// layout, so the dead parser was also the wrong one.
-#[derive(Debug, Clone, Default, borsh::BorshDeserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug,
+    Clone,
+    Default,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    solana_protocols_macros::EventLayout,
+)]
+#[idl(program = "pump", event = "TradeEvent")]
 pub struct TradeEvent {
     /// `mint` — declared by the program IDL.
     pub mint: Pubkey,
