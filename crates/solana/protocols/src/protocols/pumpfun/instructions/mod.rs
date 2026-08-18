@@ -38,21 +38,35 @@
 //! ```
 
 mod buy;
+mod buy_exact_quote_in_v2;
+mod buy_exact_sol_in;
+mod buy_v2;
+mod collect_creator_fee;
+mod collect_creator_fee_v2;
 mod common;
 mod create;
 mod create_v2;
-mod creator_fee;
+mod distribute_creator_fees;
+mod distribute_creator_fees_v2;
 mod sell;
+mod sell_v2;
 
-pub use buy::{BuyAccounts, BuyBuilder, BuyExactInParams, BuyParams};
+pub use buy::{BuyAccounts, BuyBuilder, BuyParams};
+pub use buy_exact_quote_in_v2::BuyExactQuoteInV2Params;
+pub use buy_exact_sol_in::BuyExactSolInParams;
+pub use buy_v2::BuyV2Params;
+pub use collect_creator_fee::CollectCreatorFeeParams;
+pub use collect_creator_fee_v2::CollectCreatorFeeV2Params;
 pub use common::{
     create_ata_idempotent_instruction, create_ata_idempotent_instruction_for,
     create_ata_instruction,
 };
 pub use create::{CreateAccounts, CreateParams};
 pub use create_v2::{CreateV2Accounts, CreateV2Params};
-pub use creator_fee::{CreatorFeeParams, DistributeCreatorFeesV2Params};
+pub use distribute_creator_fees::DistributeCreatorFeesParams;
+pub use distribute_creator_fees_v2::DistributeCreatorFeesV2Params;
 pub use sell::{SellAccounts, SellBuilder, SellParams};
+pub use sell_v2::SellV2Params;
 
 use super::constants::{
     BUY_DISCRIMINATOR, BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR, BUY_EXACT_SOL_IN_DISCRIMINATOR,
@@ -61,236 +75,93 @@ use super::constants::{
     DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR, PROGRAM_ID, SELL_DISCRIMINATOR,
     SELL_V2_DISCRIMINATOR,
 };
-use crate::parsing::{FromAccountKeys, FromInstructionData, InstructionParseError};
+use solana_program::pubkey::Pubkey;
+
+use solana_protocols_macros::ProtocolInstruction;
 
 // =============================================================================
 // PumpfunInstruction - Unified Instruction Enum
 // =============================================================================
 
-/// Unified instruction enum for all pump.fun instructions.
+/// Every pump.fun instruction this crate decodes, one variant per on-chain
+/// discriminator.
 ///
-/// This enum enables exhaustive pattern matching on instruction types.
-/// Use `try_from_slice()` to parse instruction data.
-#[derive(Debug, Clone)]
+/// `#[derive(ProtocolInstruction)]` generates `try_from_slice`,
+/// `discriminator` and `data` from the table below. The hand-written versions
+/// were a 60-line if-else chain over the same constants — three places to add a
+/// new instruction, and nothing that failed if you updated two of them.
+///
+/// Variants carrying no `accounts =` do so deliberately: their on-chain account
+/// lists are variable (the v2 swap forms) or run longer than the IDL declares
+/// (the creator-fee forms), so identity comes from the event rather than from a
+/// slot index.
+#[derive(Debug, Clone, ProtocolInstruction)]
+#[protocol(program_id = PROGRAM_ID)]
 pub enum PumpfunInstruction {
-    /// Buy tokens from the bonding curve.
+    /// Buy tokens from the bonding curve, pinning the tokens delivered.
+    #[instruction(discriminator = BUY_DISCRIMINATOR, accounts = BuyAccounts)]
     Buy(BuyParams),
-    /// `buy_v2` — same pinned side as [`Buy`](Self::Buy), newer layout.
-    BuyV2(BuyParams),
-    /// `buy_exact_sol_in` — pins the SOL spent, not the tokens received.
-    BuyExactSolIn(BuyExactInParams),
-    /// `buy_exact_quote_in_v2` — exact-in against the v2 layout.
-    BuyExactQuoteInV2(BuyExactInParams),
+    /// Exact-out buy against the v2 layout.
+    #[instruction(discriminator = BUY_V2_DISCRIMINATOR)]
+    BuyV2(BuyV2Params),
+    /// Exact-in buy: pins the SOL spent, not the tokens received.
+    #[instruction(discriminator = BUY_EXACT_SOL_IN_DISCRIMINATOR, accounts = BuyAccounts)]
+    BuyExactSolIn(BuyExactSolInParams),
+    /// Exact-in buy against the v2 layout, denominated in the pool's quote.
+    #[instruction(discriminator = BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR)]
+    BuyExactQuoteInV2(BuyExactQuoteInV2Params),
     /// Sell tokens back to the bonding curve.
+    #[instruction(discriminator = SELL_DISCRIMINATOR, accounts = SellAccounts)]
     Sell(SellParams),
-    /// `sell_v2` — same pinned side as [`Sell`](Self::Sell), newer layout.
-    SellV2(SellParams),
-    /// Legacy `create` instruction (pre-2024). Now rare in production.
+    /// Sell against the v2 layout.
+    #[instruction(discriminator = SELL_V2_DISCRIMINATOR)]
+    SellV2(SellV2Params),
+    /// Legacy `create` (pre-2024), now rare in production.
+    #[instruction(discriminator = CREATE_DISCRIMINATOR, accounts = CreateAccounts)]
     Create(CreateParams),
-    /// Modern `create_v2` instruction. Different account layout
-    /// (16 slots vs 14, `user` at slot 5 not 7) and richer params
-    /// (explicit `creator: Pubkey` arg + mayhem/cashback flags).
+    /// Modern `create_v2`: 16 slots rather than 14, `user` at slot 5 not 7, and
+    /// an explicit `creator` argument.
+    #[instruction(discriminator = CREATE_V2_DISCRIMINATOR, accounts = CreateV2Accounts)]
     CreateV2(CreateV2Params),
-    /// `collect_creator_fee` — a creator draining their fee vault.
-    CollectCreatorFee(CreatorFeeParams),
-    /// `collect_creator_fee_v2` — the same, settling into a token account.
-    CollectCreatorFeeV2(CreatorFeeParams),
-    /// `distribute_creator_fees` — a vault split across a sharing config.
-    DistributeCreatorFees(CreatorFeeParams),
-    /// `distribute_creator_fees_v2` — the same, able to create the recipient
-    /// token account on the way.
+    /// A creator draining their fee vault.
+    #[instruction(discriminator = COLLECT_CREATOR_FEE_DISCRIMINATOR)]
+    CollectCreatorFee(CollectCreatorFeeParams),
+    /// The same, settling into a token account.
+    #[instruction(discriminator = COLLECT_CREATOR_FEE_V2_DISCRIMINATOR)]
+    CollectCreatorFeeV2(CollectCreatorFeeV2Params),
+    /// A vault split across a sharing config.
+    #[instruction(discriminator = DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR)]
+    DistributeCreatorFees(DistributeCreatorFeesParams),
+    /// The same, able to create the recipient token account on the way.
+    #[instruction(discriminator = DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR)]
     DistributeCreatorFeesV2(DistributeCreatorFeesV2Params),
 }
 
 impl PumpfunInstruction {
-    /// Program ID for pumpfun.
-    #[must_use]
-    pub fn program_id() -> solana_program::pubkey::Pubkey {
-        PROGRAM_ID
-    }
-
-    /// Parse instruction data into the appropriate variant.
+    /// Any of the four buy forms.
     ///
-    /// Matches the first 8 bytes against known discriminators.
-    pub fn try_from_slice(data: &[u8]) -> Result<Self, InstructionParseError> {
-        if data.len() < 8 {
-            return Err(InstructionParseError::DataTooShort);
-        }
-
-        let discriminator: [u8; 8] = data[..8].try_into().unwrap();
-        let params_data = &data[8..];
-
-        // Exhaustive matching - no wildcards
-        if discriminator == BUY_DISCRIMINATOR {
-            let params = BuyParams::from_instruction_data(params_data)?;
-            Ok(PumpfunInstruction::Buy(params))
-        } else if discriminator == SELL_DISCRIMINATOR {
-            let params = SellParams::from_instruction_data(params_data)?;
-            Ok(PumpfunInstruction::Sell(params))
-        } else if discriminator == BUY_V2_DISCRIMINATOR {
-            Ok(PumpfunInstruction::BuyV2(BuyParams::from_instruction_data(
-                params_data,
-            )?))
-        } else if discriminator == BUY_EXACT_SOL_IN_DISCRIMINATOR {
-            Ok(PumpfunInstruction::BuyExactSolIn(
-                BuyExactInParams::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR {
-            Ok(PumpfunInstruction::BuyExactQuoteInV2(
-                BuyExactInParams::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == SELL_V2_DISCRIMINATOR {
-            Ok(PumpfunInstruction::SellV2(
-                SellParams::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == CREATE_DISCRIMINATOR {
-            let params = CreateParams::from_instruction_data(params_data)?;
-            Ok(PumpfunInstruction::Create(params))
-        } else if discriminator == COLLECT_CREATOR_FEE_DISCRIMINATOR {
-            Ok(PumpfunInstruction::CollectCreatorFee(
-                CreatorFeeParams::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == COLLECT_CREATOR_FEE_V2_DISCRIMINATOR {
-            Ok(PumpfunInstruction::CollectCreatorFeeV2(
-                CreatorFeeParams::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR {
-            Ok(PumpfunInstruction::DistributeCreatorFees(
-                CreatorFeeParams::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR {
-            Ok(PumpfunInstruction::DistributeCreatorFeesV2(
-                DistributeCreatorFeesV2Params::from_instruction_data(params_data)?,
-            ))
-        } else if discriminator == CREATE_V2_DISCRIMINATOR {
-            let params = CreateV2Params::from_instruction_data(params_data)?;
-            Ok(PumpfunInstruction::CreateV2(params))
-        } else {
-            Err(InstructionParseError::UnknownDiscriminator(discriminator))
-        }
-    }
-
-    /// Get the discriminator for this instruction variant.
-    #[must_use]
-    pub fn discriminator(&self) -> [u8; 8] {
-        match self {
-            PumpfunInstruction::Buy(_) => BUY_DISCRIMINATOR,
-            PumpfunInstruction::Sell(_) => SELL_DISCRIMINATOR,
-            PumpfunInstruction::BuyV2(_) => BUY_V2_DISCRIMINATOR,
-            PumpfunInstruction::BuyExactSolIn(_) => BUY_EXACT_SOL_IN_DISCRIMINATOR,
-            PumpfunInstruction::BuyExactQuoteInV2(_) => BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR,
-            PumpfunInstruction::SellV2(_) => SELL_V2_DISCRIMINATOR,
-            PumpfunInstruction::Create(_) => CREATE_DISCRIMINATOR,
-            PumpfunInstruction::CreateV2(_) => CREATE_V2_DISCRIMINATOR,
-            PumpfunInstruction::CollectCreatorFee(_) => COLLECT_CREATOR_FEE_DISCRIMINATOR,
-            PumpfunInstruction::CollectCreatorFeeV2(_) => COLLECT_CREATOR_FEE_V2_DISCRIMINATOR,
-            PumpfunInstruction::DistributeCreatorFees(_) => DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR,
-            PumpfunInstruction::DistributeCreatorFeesV2(_) => {
-                DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR
-            }
-        }
-    }
-
-    /// Serialize the instruction back to bytes.
-    ///
-    /// `CreateV2` is decode-only — there's no encoder yet because we
-    /// don't build v2 launches in this codebase. Calling `data()` on
-    /// a `CreateV2` variant returns just the discriminator + a
-    /// truncated body covering the leading `(name, symbol, uri)`
-    /// fields, which matches the v1 wire shape but not v2's full
-    /// payload. Don't rely on it for round-tripping.
-    #[must_use]
-    pub fn data(&self) -> Vec<u8> {
-        match self {
-            PumpfunInstruction::Buy(params) => params.to_data(),
-            PumpfunInstruction::Sell(params) => params.to_data(),
-            // No encoders for the newer forms; callers should not be
-            // re-emitting them through this path. Returning the bare
-            // discriminator keeps the shape honest rather than encoding a
-            // v1 body under a v2 discriminator.
-            PumpfunInstruction::BuyV2(_) => BUY_V2_DISCRIMINATOR.to_vec(),
-            PumpfunInstruction::BuyExactSolIn(_) => BUY_EXACT_SOL_IN_DISCRIMINATOR.to_vec(),
-            PumpfunInstruction::BuyExactQuoteInV2(_) => {
-                BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR.to_vec()
-            }
-            PumpfunInstruction::SellV2(_) => SELL_V2_DISCRIMINATOR.to_vec(),
-            PumpfunInstruction::Create(params) => params.to_data(),
-            PumpfunInstruction::CreateV2(_) => {
-                // No encoder. Return just the disc; callers shouldn't
-                // be re-emitting v2 instructions via this path.
-                CREATE_V2_DISCRIMINATOR.to_vec()
-            }
-            // Zero-argument instructions: the discriminator *is* the whole
-            // encoding, so these are complete rather than truncated.
-            PumpfunInstruction::CollectCreatorFee(_) => COLLECT_CREATOR_FEE_DISCRIMINATOR.to_vec(),
-            PumpfunInstruction::CollectCreatorFeeV2(_) => {
-                COLLECT_CREATOR_FEE_V2_DISCRIMINATOR.to_vec()
-            }
-            PumpfunInstruction::DistributeCreatorFees(_) => {
-                DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR.to_vec()
-            }
-            PumpfunInstruction::DistributeCreatorFeesV2(params) => {
-                let mut data = DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR.to_vec();
-                data.push(u8::from(params.initialize_ata));
-                data
-            }
-        }
-    }
-
-    /// Parse account pubkeys into the corresponding accounts struct.
-    pub fn from_accounts(
-        &self,
-        account_keys: &[solana_program::pubkey::Pubkey],
-    ) -> Result<PumpfunInstructionAccounts, InstructionParseError> {
-        match self {
-            // `buy_exact_sol_in` shares `buy`'s account layout.
-            PumpfunInstruction::Buy(_) | PumpfunInstruction::BuyExactSolIn(_) => {
-                let accounts = BuyAccounts::from_account_keys(account_keys)?;
-                Ok(PumpfunInstructionAccounts::Buy(accounts))
-            }
-            // v2 layouts are not captured; decoding them through a v1 struct
-            // would succeed and be wrong.
-            PumpfunInstruction::BuyV2(_)
-            | PumpfunInstruction::BuyExactQuoteInV2(_)
-            | PumpfunInstruction::SellV2(_) => Err(InstructionParseError::DeserializationFailed(
-                "pumpfun v2 account layout not captured".to_string(),
-            )),
-            // Deliberately not captured: mainnet sends these with more accounts
-            // than the IDL declares, so a fixed-slot struct would decode the
-            // wrong pubkeys. Their event names its own participants.
-            PumpfunInstruction::CollectCreatorFee(_)
-            | PumpfunInstruction::CollectCreatorFeeV2(_)
-            | PumpfunInstruction::DistributeCreatorFees(_)
-            | PumpfunInstruction::DistributeCreatorFeesV2(_) => {
-                Err(InstructionParseError::DeserializationFailed(
-                    "pumpfun creator-fee instructions are identified, not slot-decoded".to_string(),
-                ))
-            }
-            PumpfunInstruction::Sell(_) => {
-                let accounts = SellAccounts::from_account_keys(account_keys)?;
-                Ok(PumpfunInstructionAccounts::Sell(accounts))
-            }
-            PumpfunInstruction::Create(_) => {
-                let accounts = CreateAccounts::from_account_keys(account_keys)?;
-                Ok(PumpfunInstructionAccounts::Create(accounts))
-            }
-            PumpfunInstruction::CreateV2(_) => {
-                let accounts = CreateV2Accounts::from_account_keys(account_keys)?;
-                Ok(PumpfunInstructionAccounts::CreateV2(accounts))
-            }
-        }
-    }
-
-    /// Check if this is a buy instruction.
+    /// All four, deliberately: this matched only the v1 `buy` while `buy_v2`,
+    /// `buy_exact_sol_in` and `buy_exact_quote_in_v2` existed as variants, so a
+    /// caller asking "is this a buy" got `false` for roughly a third of the
+    /// buys on chain. The per-discriminator split is what made the gap visible.
     #[must_use]
     pub fn is_buy(&self) -> bool {
-        matches!(self, PumpfunInstruction::Buy(_))
+        matches!(
+            self,
+            PumpfunInstruction::Buy(_)
+                | PumpfunInstruction::BuyV2(_)
+                | PumpfunInstruction::BuyExactSolIn(_)
+                | PumpfunInstruction::BuyExactQuoteInV2(_)
+        )
     }
 
-    /// Check if this is a sell instruction.
+    /// Either sell form.
     #[must_use]
     pub fn is_sell(&self) -> bool {
-        matches!(self, PumpfunInstruction::Sell(_))
+        matches!(
+            self,
+            PumpfunInstruction::Sell(_) | PumpfunInstruction::SellV2(_)
+        )
     }
 
     /// Check if this is a create instruction (v1 or v2).
@@ -302,13 +173,10 @@ impl PumpfunInstruction {
         )
     }
 
-    /// Check if this is a swap instruction (buy or sell).
+    /// Any buy or sell, in any of its forms.
     #[must_use]
     pub fn is_swap(&self) -> bool {
-        matches!(
-            self,
-            PumpfunInstruction::Buy(_) | PumpfunInstruction::Sell(_)
-        )
+        self.is_buy() || self.is_sell()
     }
 }
 
@@ -316,116 +184,81 @@ impl PumpfunInstruction {
 // PumpfunInstructionAccounts - Accounts Enum
 // =============================================================================
 
-/// Accounts enum for pumpfun instruction variants.
-///
-/// Each variant contains the resolved account pubkeys for that instruction.
-#[derive(Debug, Clone)]
-pub enum PumpfunInstructionAccounts {
-    /// Accounts for buy instruction.
-    Buy(BuyAccounts),
-    /// Accounts for sell instruction.
-    Sell(SellAccounts),
-    /// Accounts for legacy `create` instruction.
-    Create(CreateAccounts),
-    /// Accounts for modern `create_v2` instruction (different layout).
-    CreateV2(CreateV2Accounts),
-}
-
 impl PumpfunInstructionAccounts {
-    /// Get the mint address from any instruction accounts.
+    /// The token mint this instruction acts on.
+    ///
+    /// `None` for the v2 and creator-fee forms, which carry no account struct:
+    /// their on-chain lists are variable or longer than the IDL declares, so
+    /// there is no slot to read. Identity for those comes from the event, and
+    /// returning a defaulted pubkey here would be an answer we do not have.
     #[must_use]
-    pub fn mint(&self) -> solana_program::pubkey::Pubkey {
+    pub fn mint(&self) -> Option<Pubkey> {
         match self {
-            PumpfunInstructionAccounts::Buy(a) => a.mint,
-            PumpfunInstructionAccounts::Sell(a) => a.mint,
-            PumpfunInstructionAccounts::Create(a) => a.mint,
-            PumpfunInstructionAccounts::CreateV2(a) => a.mint,
+            Self::Buy(a) | Self::BuyExactSolIn(a) => Some(a.mint),
+            Self::Sell(a) => Some(a.mint),
+            Self::Create(a) => Some(a.mint),
+            Self::CreateV2(a) => Some(a.mint),
+            Self::BuyV2
+            | Self::BuyExactQuoteInV2
+            | Self::SellV2
+            | Self::CollectCreatorFee
+            | Self::CollectCreatorFeeV2
+            | Self::DistributeCreatorFees
+            | Self::DistributeCreatorFeesV2 => None,
         }
     }
 
-    /// Get the user address from any instruction accounts.
+    /// The bonding curve backing [`mint`](Self::mint).
+    ///
+    /// `None` for the v2 and creator-fee forms, which carry no account struct:
+    /// their on-chain lists are variable or longer than the IDL declares, so
+    /// there is no slot to read. Identity for those comes from the event, and
+    /// returning a defaulted pubkey here would be an answer we do not have.
     #[must_use]
-    pub fn user(&self) -> solana_program::pubkey::Pubkey {
+    pub fn bonding_curve(&self) -> Option<Pubkey> {
         match self {
-            PumpfunInstructionAccounts::Buy(a) => a.user,
-            PumpfunInstructionAccounts::Sell(a) => a.user,
-            PumpfunInstructionAccounts::Create(a) => a.user,
-            PumpfunInstructionAccounts::CreateV2(a) => a.user,
+            Self::Buy(a) | Self::BuyExactSolIn(a) => Some(a.bonding_curve),
+            Self::Sell(a) => Some(a.bonding_curve),
+            Self::Create(a) => Some(a.bonding_curve),
+            Self::CreateV2(a) => Some(a.bonding_curve),
+            Self::BuyV2
+            | Self::BuyExactQuoteInV2
+            | Self::SellV2
+            | Self::CollectCreatorFee
+            | Self::CollectCreatorFeeV2
+            | Self::DistributeCreatorFees
+            | Self::DistributeCreatorFeesV2 => None,
         }
     }
 
-    /// Get the bonding curve address from any instruction accounts.
+    /// The wallet that signed — trader on a swap, creator on a launch.
+    ///
+    /// `None` for the v2 and creator-fee forms, which carry no account struct:
+    /// their on-chain lists are variable or longer than the IDL declares, so
+    /// there is no slot to read. Identity for those comes from the event, and
+    /// returning a defaulted pubkey here would be an answer we do not have.
     #[must_use]
-    pub fn bonding_curve(&self) -> solana_program::pubkey::Pubkey {
+    pub fn user(&self) -> Option<Pubkey> {
         match self {
-            PumpfunInstructionAccounts::Buy(a) => a.bonding_curve,
-            PumpfunInstructionAccounts::Sell(a) => a.bonding_curve,
-            PumpfunInstructionAccounts::Create(a) => a.bonding_curve,
-            PumpfunInstructionAccounts::CreateV2(a) => a.bonding_curve,
+            Self::Buy(a) | Self::BuyExactSolIn(a) => Some(a.user),
+            Self::Sell(a) => Some(a.user),
+            Self::Create(a) => Some(a.user),
+            Self::CreateV2(a) => Some(a.user),
+            Self::BuyV2
+            | Self::BuyExactQuoteInV2
+            | Self::SellV2
+            | Self::CollectCreatorFee
+            | Self::CollectCreatorFeeV2
+            | Self::DistributeCreatorFees
+            | Self::DistributeCreatorFeesV2 => None,
         }
-    }
-}
-
-// =============================================================================
-// PumpfunInstructionEvent - Parsed Event
-// =============================================================================
-
-/// Parsed pumpfun event combining instruction, accounts, and log.
-///
-/// This struct represents a fully parsed instruction from a transaction,
-/// including the resolved account pubkeys and any associated log data.
-#[derive(Debug, Clone)]
-pub struct PumpfunInstructionEvent {
-    /// The parsed instruction with its parameters.
-    pub instruction: PumpfunInstruction,
-    /// The resolved account pubkeys.
-    pub accounts: PumpfunInstructionAccounts,
-    /// Associated log data (discriminator + payload).
-    /// None if no matching log was found.
-    pub log_data: Option<Vec<u8>>,
-    /// Whether transaction logs were truncated.
-    pub logs_truncated: bool,
-}
-
-impl PumpfunInstructionEvent {
-    /// Create a new event from parsed components.
-    #[must_use]
-    pub fn new(
-        instruction: PumpfunInstruction,
-        accounts: PumpfunInstructionAccounts,
-        log_data: Option<Vec<u8>>,
-        logs_truncated: bool,
-    ) -> Self {
-        Self {
-            instruction,
-            accounts,
-            log_data,
-            logs_truncated,
-        }
-    }
-
-    /// Get the instruction discriminator.
-    #[must_use]
-    pub fn discriminator(&self) -> [u8; 8] {
-        self.instruction.discriminator()
-    }
-
-    /// Get the mint address.
-    #[must_use]
-    pub fn mint(&self) -> solana_program::pubkey::Pubkey {
-        self.accounts.mint()
-    }
-
-    /// Get the user address.
-    #[must_use]
-    pub fn user(&self) -> solana_program::pubkey::Pubkey {
-        self.accounts.user()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parsing::InstructionParseError;
     use solana_program::pubkey::Pubkey;
 
     #[test]

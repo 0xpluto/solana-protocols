@@ -205,29 +205,42 @@ impl ClassifiesAsSwap for PumpfunInstruction {
         match self {
             // `buy`/`buy_v2` pin the TOKENS OUT and ceiling the SOL. The out
             // side read `Minimum` here, which had the pinned side backwards.
-            PumpfunInstruction::Buy(params) | PumpfunInstruction::BuyV2(params) => {
-                Some(SwapClassification::new(
-                    SwapDirection::Buy,
-                    SwapAmount::Maximum(params.max_sol_cost),
-                    SwapAmount::Exact(params.amount),
-                ))
-            }
+            PumpfunInstruction::Buy(p) => Some(SwapClassification::new(
+                SwapDirection::Buy,
+                SwapAmount::Maximum(p.max_sol_cost),
+                SwapAmount::Exact(p.amount),
+            )),
+            PumpfunInstruction::BuyV2(p) => Some(SwapClassification::new(
+                SwapDirection::Buy,
+                SwapAmount::Maximum(p.max_sol_cost),
+                SwapAmount::Exact(p.amount),
+            )),
             // The exact-IN buys are the mirror image: SOL in is pinned, tokens
             // out are a floor. Same bytes, opposite meaning — which is why
             // they carry their own params type.
-            PumpfunInstruction::BuyExactSolIn(params)
-            | PumpfunInstruction::BuyExactQuoteInV2(params) => Some(SwapClassification::new(
+            PumpfunInstruction::BuyExactSolIn(p) => Some(SwapClassification::new(
                 SwapDirection::Buy,
-                SwapAmount::Exact(params.spendable_in),
-                SwapAmount::Minimum(params.min_tokens_out),
+                SwapAmount::Exact(p.spendable_sol_in),
+                SwapAmount::Minimum(p.min_tokens_out),
             )),
-            PumpfunInstruction::Sell(params) | PumpfunInstruction::SellV2(params) => {
-                Some(SwapClassification::new(
-                    SwapDirection::Sell,
-                    SwapAmount::Exact(params.amount),
-                    SwapAmount::Minimum(params.min_sol_output),
-                ))
-            }
+            // v2 names the pinned side `quote` rather than `sol`: the layout
+            // supports non-SOL quote mints, so the field cannot honestly be
+            // called SOL. Same role, different denomination assumption.
+            PumpfunInstruction::BuyExactQuoteInV2(p) => Some(SwapClassification::new(
+                SwapDirection::Buy,
+                SwapAmount::Exact(p.spendable_quote_in),
+                SwapAmount::Minimum(p.min_tokens_out),
+            )),
+            PumpfunInstruction::Sell(p) => Some(SwapClassification::new(
+                SwapDirection::Sell,
+                SwapAmount::Exact(p.amount),
+                SwapAmount::Minimum(p.min_sol_output),
+            )),
+            PumpfunInstruction::SellV2(p) => Some(SwapClassification::new(
+                SwapDirection::Sell,
+                SwapAmount::Exact(p.amount),
+                SwapAmount::Minimum(p.min_sol_output),
+            )),
             PumpfunInstruction::Create(_) | PumpfunInstruction::CreateV2(_) => None,
             // Creator-fee movements are not swaps and not creations: nobody
             // trades, and the amount is a claim on fees already earned. They
@@ -278,9 +291,9 @@ impl ClassifiesAsTokenCreation for PumpfunInstruction {
 impl ClassifiesAsSwap for PumpfunInstructionEvent {
     fn as_swap(&self) -> Option<SwapClassification> {
         self.instruction.as_swap().map(|mut swap| {
-            swap.mint = Some(self.accounts.mint());
-            swap.pool = Some(self.accounts.bonding_curve());
-            swap.user = Some(self.accounts.user());
+            swap.mint = self.accounts.mint();
+            swap.pool = self.accounts.bonding_curve();
+            swap.user = self.accounts.user();
             swap
         })
     }
@@ -289,9 +302,9 @@ impl ClassifiesAsSwap for PumpfunInstructionEvent {
 impl ClassifiesAsTokenCreation for PumpfunInstructionEvent {
     fn as_token_creation(&self) -> Option<TokenCreationClassification> {
         self.instruction.as_token_creation().map(|mut creation| {
-            creation.mint = self.accounts.mint();
-            creation.pool = Some(self.accounts.bonding_curve());
-            creation.creator = Some(self.accounts.user());
+            creation.mint = self.accounts.mint().unwrap_or_default();
+            creation.pool = self.accounts.bonding_curve();
+            creation.creator = self.accounts.user();
             creation
         })
     }
@@ -319,9 +332,9 @@ mod tests {
     /// The exact-IN buy pins the opposite side from `buy`.
     #[test]
     fn pumpfun_exact_sol_in_pins_the_input() {
-        use crate::protocols::pumpfun::BuyExactInParams;
-        let ix = PumpfunInstruction::BuyExactSolIn(BuyExactInParams {
-            spendable_in: 500_000,
+        use crate::protocols::pumpfun::BuyExactSolInParams;
+        let ix = PumpfunInstruction::BuyExactSolIn(BuyExactSolInParams {
+            spendable_sol_in: 500_000,
             min_tokens_out: 9,
             track_volume: crate::protocols::OptionBool::None,
         });

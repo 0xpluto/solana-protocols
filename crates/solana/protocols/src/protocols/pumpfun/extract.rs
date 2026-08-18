@@ -221,11 +221,13 @@ fn extract_swap(
         // `buy_exact_quote_in_v2` this is an argument the IDL does not declare,
         // and it is the only record that the trade opted in.
         track_volume: match pumpfun_ix {
-            PumpfunInstruction::Buy(p) | PumpfunInstruction::BuyV2(p) => p.track_volume,
-            PumpfunInstruction::BuyExactSolIn(p) | PumpfunInstruction::BuyExactQuoteInV2(p) => {
-                p.track_volume
-            }
-            PumpfunInstruction::Sell(_)
+            PumpfunInstruction::Buy(p) => p.track_volume,
+            PumpfunInstruction::BuyExactSolIn(p) => p.track_volume,
+            PumpfunInstruction::BuyExactQuoteInV2(p) => p.track_volume,
+            // `buy_v2` declares no trailing flag and has never been observed
+            // sending one (0 of 208 in a mainnet window), unlike its v2 sibling.
+            PumpfunInstruction::BuyV2(_)
+            | PumpfunInstruction::Sell(_)
             | PumpfunInstruction::SellV2(_)
             | PumpfunInstruction::Create(_)
             | PumpfunInstruction::CreateV2(_)

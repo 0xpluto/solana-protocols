@@ -130,12 +130,6 @@ pub struct CreateV2Params {
     pub is_cashback_enabled: crate::protocols::OptionBool,
 }
 
-impl CreateV2Params {
-    /// Convenience: this instruction's discriminator. Useful for tests
-    /// that hand-craft instruction data.
-    pub const DISCRIMINATOR: [u8; 8] = CREATE_V2_DISCRIMINATOR;
-}
-
 impl FromInstructionData for CreateV2Params {
     fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError> {
         let mut offset = 0;
@@ -214,6 +208,23 @@ fn read_bool(data: &[u8], offset: &mut usize) -> Result<bool, InstructionParseEr
 
 /// Anchor `OptionBool` is encoded with a single tag byte (`0` =
 /// `None`, `1` = `Some`) followed by the value byte when `Some`.
+
+impl CreateV2Params {
+    /// Argument encoding.
+    ///
+    /// Decode-only in practice — this codebase does not launch tokens — but the
+    /// instruction enum's generated `data()` needs every variant to be able to
+    /// answer. Returning the leading `(name, symbol, uri)` prefix would be a v1
+    /// body under a v2 discriminator, so this refuses by returning nothing and
+    /// the caller gets the bare discriminator.
+    #[must_use]
+    pub fn to_data(&self) -> Vec<u8> {
+        Vec::new()
+    }
+    /// Convenience: this instruction's discriminator. Useful for tests
+    /// that hand-craft instruction data.
+    pub const DISCRIMINATOR: [u8; 8] = CREATE_V2_DISCRIMINATOR;
+}
 
 #[cfg(test)]
 mod tests {

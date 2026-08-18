@@ -1,12 +1,17 @@
-//! Pump.fun buy instruction builder.
+//! Pump.fun `buy` — exact-out buy against the v1 account layout.
+//!
+//! One file per discriminator: `buy_v2`, `buy_exact_sol_in` and
+//! `buy_exact_quote_in_v2` are siblings, not variants of this. They differ in
+//! which side they pin and in whether the IDL declares a trailing
+//! `track_volume`, and a shared params struct answered both questions once for
+//! four instructions that do not agree.
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
-use solana_protocols_macros::{AccountMetas, BuildAccounts, OnchainInstruction};
+use solana_protocols_macros::{AccountMetas, BuildAccounts, InstructionData, OnchainInstruction};
 use solana_sdk::instruction::Instruction;
 
 use crate::error::Result;
-use crate::parsing::{FromInstructionData, InstructionParseError};
 use crate::traits::InstructionBuilder;
 
 use super::super::accounts::PumpfunKeys;
@@ -119,7 +124,8 @@ impl BuyAccounts {
 }
 
 /// Parameters for a buy instruction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, InstructionData)]
+#[instruction_data(discriminator = BUY_DISCRIMINATOR)]
 pub struct BuyParams {
     /// Amount of tokens to receive.
     pub amount: u64,
@@ -178,73 +184,6 @@ impl BuyParams {
             max_sol_cost: max_sol,
             track_volume: crate::protocols::OptionBool::None,
         }
-    }
-
-    /// Serialize to instruction data.
-    #[must_use]
-    pub fn to_data(&self) -> Vec<u8> {
-        let mut data = Vec::with_capacity(24);
-        data.extend_from_slice(&BUY_DISCRIMINATOR);
-        data.extend_from_slice(&self.amount.to_le_bytes());
-        data.extend_from_slice(&self.max_sol_cost.to_le_bytes());
-        // Absent serialises to nothing, so an unset flag reproduces the
-        // pre-2026-08-12 bytes exactly.
-        data.extend_from_slice(self.track_volume.to_bytes());
-        data
-    }
-}
-
-/// Params for pumpfun's exact-IN buys (`buy_exact_sol_in`,
-/// `buy_exact_quote_in_v2`).
-///
-/// A distinct type from [`BuyParams`] on purpose. The byte layout is the same
-/// two `u64`s, but the *meaning* is inverted: `buy` pins the tokens it
-/// delivers, these pin the SOL they spend. Sharing one struct would name the
-/// pinned side wrong for half its uses, which is precisely the confusion that
-/// makes a quoter "close but never exact".
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BuyExactInParams {
-    /// SOL/quote the trader spends — the pinned side.
-    pub spendable_in: u64,
-    /// Minimum tokens to accept.
-    pub min_tokens_out: u64,
-    /// Trailing `OptionBool` — see [`BuyParams::track_volume`].
-    pub track_volume: crate::protocols::OptionBool,
-}
-
-impl FromInstructionData for BuyExactInParams {
-    fn from_instruction_data(data: &[u8]) -> std::result::Result<Self, InstructionParseError> {
-        if data.len() < 16 {
-            return Err(InstructionParseError::DeserializationFailed(format!(
-                "BuyExactInParams: expected 16 bytes, got {}",
-                data.len()
-            )));
-        }
-        Ok(Self {
-            spendable_in: u64::from_le_bytes(data[0..8].try_into().unwrap()),
-            min_tokens_out: u64::from_le_bytes(data[8..16].try_into().unwrap()),
-            track_volume: crate::protocols::OptionBool::from_bytes(&data[16..])
-                .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?,
-        })
-    }
-}
-
-impl FromInstructionData for BuyParams {
-    fn from_instruction_data(data: &[u8]) -> std::result::Result<Self, InstructionParseError> {
-        if data.len() < 16 {
-            return Err(InstructionParseError::DeserializationFailed(format!(
-                "BuyParams: expected 16 bytes, got {}",
-                data.len()
-            )));
-        }
-        let amount = u64::from_le_bytes(data[0..8].try_into().unwrap());
-        let max_sol_cost = u64::from_le_bytes(data[8..16].try_into().unwrap());
-        Ok(BuyParams {
-            amount,
-            max_sol_cost,
-            track_volume: crate::protocols::OptionBool::from_bytes(&data[16..])
-                .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?,
-        })
     }
 }
 
@@ -418,80 +357,5 @@ mod tests {
 
         // Second should be the buy
         assert_eq!(instructions[1].program_id, PROGRAM_ID);
-    }
-}
-
-#[cfg(test)]
-mod trailing_arg {
-    use super::*;
-    use crate::protocols::OptionBool;
-
-    /// The real wire shapes, from 1,050 v2 instructions captured 2026-08-12.
-    ///
-    /// `buy_exact_quote_in_v2` carries a `track_volume` byte the IDL does not
-    /// declare: 17 arg bytes with a trailing `[1]` (113 samples, 28 accounts)
-    /// against 16 with nothing (362 samples, 27 accounts). Decoding it is what
-    /// makes "did this trade opt into volume tracking" answerable — and that
-    /// flag adds an account, so it should move compute too.
-    #[test]
-    fn the_trailing_byte_is_decoded_as_track_volume() {
-        let mut args = Vec::new();
-        args.extend_from_slice(&1_000_000u64.to_le_bytes());
-        args.extend_from_slice(&42u64.to_le_bytes());
-
-        // The dominant shape: no trailing byte at all.
-        let absent = BuyExactInParams::from_instruction_data(&args).expect("16-byte form");
-        assert_eq!(absent.track_volume, OptionBool::None);
-        assert_eq!(absent.spendable_in, 1_000_000);
-
-        // The 25-byte shape. Always [1] on chain — [0] is never sent, because
-        // omitting the argument already means false.
-        let mut with_flag = args.clone();
-        with_flag.push(1);
-        let present = BuyExactInParams::from_instruction_data(&with_flag).expect("17-byte form");
-        assert_eq!(present.track_volume, OptionBool::SomeTrue);
-        assert_eq!(present.track_volume.requested(), Some(true));
-        assert_eq!(present.min_tokens_out, 42);
-    }
-
-    /// A trailer we cannot attribute is retained, not refused.
-    ///
-    /// This test asserted the opposite until 2026-08-15, when mainnet produced
-    /// a `buy_exact_sol_in` carrying eight zero bytes. The program accepted it,
-    /// so it is a valid instruction and refusing it made us wrong about the
-    /// chain — the bytes are unexplained, which is a different thing from the
-    /// instruction being malformed. They are kept verbatim so the sender's
-    /// encoding stays queryable, and the flag stays unresolved.
-    #[test]
-    fn an_unattributed_trailer_is_retained_with_the_flag_unresolved() {
-        let mut args = vec![0u8; 16];
-        args.extend_from_slice(&[7, 7, 7]);
-        let p = BuyExactInParams::from_instruction_data(&args).expect("valid with a trailer");
-        assert_eq!(p.track_volume.unattributed(), Some([7, 7, 7].as_slice()));
-        assert_eq!(p.track_volume.requested(), None);
-    }
-
-    /// The exact mainnet bytes, discriminator stripped: two `u64` arguments
-    /// then eight zero bytes.
-    #[test]
-    fn the_observed_mainnet_buy_exact_sol_in_decodes() {
-        let mut args = 1_000_000u64.to_le_bytes().to_vec();
-        args.extend_from_slice(&1u64.to_le_bytes());
-        args.extend_from_slice(&[0u8; 8]);
-        let p = BuyExactInParams::from_instruction_data(&args).expect("mainnet form decodes");
-        assert_eq!(p.spendable_in, 1_000_000);
-        assert_eq!(p.min_tokens_out, 1);
-        assert_eq!(p.track_volume.unattributed(), Some([0u8; 8].as_slice()));
-        assert_eq!(p.track_volume.requested(), None);
-    }
-
-    /// The refusal still exists, one bound further out: a trailer too long to
-    /// hold inline would make the retained bytes a partial record, so it stays
-    /// an error and lands in the undecoded sink with its bytes.
-    #[test]
-    fn a_trailer_past_the_inline_bound_is_still_refused() {
-        let mut args = vec![0u8; 16];
-        args.extend_from_slice(&[7u8; crate::protocols::Trailer::MAX + 1]);
-        assert!(BuyExactInParams::from_instruction_data(&args).is_err());
     }
 }
