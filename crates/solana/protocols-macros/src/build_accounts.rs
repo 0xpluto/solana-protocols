@@ -109,7 +109,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let mut list_fields: Vec<syn::Ident> = Vec::new();
     for (index, field) in fields.iter().enumerate() {
         let ident = field.ident.clone().unwrap();
-        let ty = quote::ToTokens::to_token_stream(&field.ty).to_string().replace(' ', "");
+        let ty = quote::ToTokens::to_token_stream(&field.ty)
+            .to_string()
+            .replace(' ', "");
         let wrapper = if ty.ends_with("Conditional") {
             Wrapper::Conditional
         } else if ty.starts_with("Vec<") {
@@ -285,7 +287,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 Wrapper::List => quote! { #id: ::std::vec::Vec::new() },
             }
         })
-        .chain(list_fields.iter().map(|id| quote! { #id: ::std::vec::Vec::new() }))
+        .chain(
+            list_fields
+                .iter()
+                .map(|id| quote! { #id: ::std::vec::Vec::new() }),
+        )
         .collect();
 
     // Optional replay test: rebuild the real instruction from its own inputs.

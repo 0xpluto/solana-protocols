@@ -43,7 +43,9 @@ use super::constants::{BONDING_CURVE_DISCRIMINATOR, SOL_DECIMALS, TOKEN_DECIMALS
 /// transcribed and no field the account lacks can be added.
 ///
 /// [`REQUIRED_LEN`]: crate::parsing::state::OnchainState::REQUIRED_LEN
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, borsh::BorshDeserialize, OnchainState)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, borsh::BorshDeserialize, OnchainState,
+)]
 #[idl(program = "pump", account = "BondingCurve")]
 #[state(discriminator = BONDING_CURVE_DISCRIMINATOR)]
 #[state(fixtures("pumpfun/bonding_curve_150.json"))]

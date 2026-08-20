@@ -22,7 +22,9 @@ pub use meteora_dlmm_sdk::instructions::AddLiquidityByStrategy2InstructionArgs;
 pub use meteora_dlmm_sdk::instructions::ADD_LIQUIDITY_BY_STRATEGY2_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct AddLiquidityByStrategy2Accounts {
     #[account(writable)]
     pub position: Pubkey,
@@ -69,7 +71,6 @@ pub struct AddLiquidityByStrategy2Accounts {
                   and each is the same kind of thing so there is nothing to name"
     )]
     pub bin_arrays: Vec<Pubkey>,
-
 }
 
 #[derive(Debug, Clone)]

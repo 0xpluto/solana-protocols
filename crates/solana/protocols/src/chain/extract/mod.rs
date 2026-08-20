@@ -32,7 +32,8 @@ pub use error::{
 };
 pub use registry::{ExtractFn, ExtractorRegistry, ProtocolExtractor};
 pub use traits::{
-    child_event, corroborate, optional_child_event, ExtractsCreation, ExtractsCreatorFee, ExtractsLiquidity, ExtractsMigration, ExtractsSwap,
+    child_event, corroborate, optional_child_event, ExtractsCreation, ExtractsCreatorFee,
+    ExtractsLiquidity, ExtractsMigration, ExtractsSwap,
 };
 
 use solana_program::pubkey::Pubkey;

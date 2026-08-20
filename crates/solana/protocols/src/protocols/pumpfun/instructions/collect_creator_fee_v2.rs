@@ -45,8 +45,6 @@ use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction}
 ), idl(program = "pump", instruction = "collect_creator_fee_v2"))]
 pub struct CollectCreatorFeeV2Params;
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;

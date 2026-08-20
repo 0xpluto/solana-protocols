@@ -20,9 +20,7 @@ use super::super::constants::CREATE_POOL_DISCRIMINATOR;
 /// \[15\]=associated_token_program, \[16\]=event_authority, \[17\]=program
 #[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
 #[idl(program = "pump_amm", instruction = "create_pool")]
-#[onchain_ix(fixtures(
-    "pumpswap/ix_create_pool_n18.json"
-))]
+#[onchain_ix(fixtures("pumpswap/ix_create_pool_n18.json"))]
 pub struct CreatePoolAccounts {
     /// IDL slot 0.
     #[account(writable)]

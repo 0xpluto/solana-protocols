@@ -11,7 +11,6 @@
 use solana_program::pubkey::Pubkey;
 use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 
-
 /// Arguments: none.
 #[derive(
     Debug,

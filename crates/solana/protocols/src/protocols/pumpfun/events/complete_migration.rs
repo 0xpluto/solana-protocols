@@ -80,6 +80,8 @@ mod tests {
                 "a byte past the last field means the program grew one"
             );
         }
-        check(body(include_str!("../../../../fixtures/pumpfun/event_bodies/CompletePumpAmmMigrationEvent_192.hex")));
+        check(body(include_str!(
+            "../../../../fixtures/pumpfun/event_bodies/CompletePumpAmmMigrationEvent_192.hex"
+        )));
     }
 }

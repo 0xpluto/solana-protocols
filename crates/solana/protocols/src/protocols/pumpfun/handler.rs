@@ -31,8 +31,6 @@ use super::fee_config::PumpfunFeeConfig;
 use super::global::PumpfunFeeRecipients;
 use super::state::BondingCurve;
 
-
-
 // =====================================================================
 // Bonding curve
 // =====================================================================

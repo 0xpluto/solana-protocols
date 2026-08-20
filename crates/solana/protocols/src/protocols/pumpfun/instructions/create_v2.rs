@@ -45,18 +45,14 @@ use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
 
 use crate::parsing::accounts::Conditional;
-use solana_protocols_macros::{AccountMetas, OnchainInstruction, InstructionData};
-
+use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 
 use super::super::constants::CREATE_V2_DISCRIMINATOR;
 
 /// Account list for the `create_v2` instruction. 16 slots.
 #[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
 #[idl(program = "pump", instruction = "create_v2")]
-#[onchain_ix(fixtures(
-    "pumpfun/ix_create_v2_n16.json",
-    "pumpfun/ix_create_v2_n19.json"
-))]
+#[onchain_ix(fixtures("pumpfun/ix_create_v2_n16.json", "pumpfun/ix_create_v2_n19.json"))]
 pub struct CreateV2Accounts {
     /// Token mint (created by this instruction).
     #[account(writable, signer)]
@@ -123,7 +119,6 @@ pub struct CreateV2Accounts {
     /// The token program owning the quote mint.
     #[account(conditional)]
     pub quote_token_program: Conditional,
-
 }
 
 /// Parameters for the `create_v2` instruction. Strict superset of
@@ -165,15 +160,9 @@ pub struct CreateV2Params {
     pub is_cashback_enabled: crate::protocols::OptionBool,
 }
 
-
 // ---------------------------------------------------------------------
 // Borsh primitive helpers (local — keep create_v2.rs self-contained)
 // ---------------------------------------------------------------------
-
-
-
-
-
 
 #[cfg(test)]
 mod tests {

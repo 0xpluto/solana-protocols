@@ -121,8 +121,7 @@ mod reason_tests {
                 reason: String::new(),
             },
         ];
-        let produced: std::collections::HashSet<_> =
-            all.iter().map(HandlerError::reason).collect();
+        let produced: std::collections::HashSet<_> = all.iter().map(HandlerError::reason).collect();
         let declared: std::collections::HashSet<_> = HandlerError::REASONS.into_iter().collect();
         assert_eq!(produced, declared);
         assert_eq!(produced.len(), all.len(), "two variants share a label");

@@ -96,7 +96,11 @@ mod tests {
                 "a byte past the last field means the program grew one"
             );
         }
-        check(body(include_str!("../../../../fixtures/pumpfun/event_bodies/CreateEvent_308.hex")));
-        check(body(include_str!("../../../../fixtures/pumpfun/event_bodies/CreateEvent_422.hex")));
+        check(body(include_str!(
+            "../../../../fixtures/pumpfun/event_bodies/CreateEvent_308.hex"
+        )));
+        check(body(include_str!(
+            "../../../../fixtures/pumpfun/event_bodies/CreateEvent_422.hex"
+        )));
     }
 }

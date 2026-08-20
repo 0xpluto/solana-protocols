@@ -83,7 +83,11 @@ mod tests {
             .step_by(2)
             .map(|i| u8::from_str_radix(&hex.trim()[i..i + 2], 16).expect("hex"))
             .collect();
-        assert_eq!(body.len(), 248, "the captured body is the size the IDL declares");
+        assert_eq!(
+            body.len(),
+            248,
+            "the captured body is the size the IDL declares"
+        );
         let ev = DepositEvent::from_event_body(&body).expect("real body decodes");
 
         let mut longer = body.clone();

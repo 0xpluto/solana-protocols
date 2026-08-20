@@ -64,70 +64,70 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let walk = crate::fixture_walk::walk(
         &ident,
         &fixtures,
-        quote! { 
-                let fx = crate::test_fixtures::InstructionFixture::load(__fixture);
+        quote! {
+        let fx = crate::test_fixtures::InstructionFixture::load(__fixture);
+        assert!(
+            fx.data().len() >= 8,
+            "instruction {} carries no discriminator",
+            fx.signature
+        );
+        let parsed = #ident::from_pubkeys(&fx.pubkeys())
+            .expect("from_pubkeys on the real instruction's accounts");
+        // Compare PUBKEYS only, never flags: a swap is usually an inner
+        // (CPI) instruction, and jsonParsed carries only message-level
+        // signer/writable flags, not the CPI's declared per-account
+        // privileges — so flags aren't recoverable and extraction never
+        // needs them. This asserts the struct's account count/order
+        // prefix matches the real landed instruction.
+        let ours: ::std::vec::Vec<_> =
+            parsed.to_account_metas().into_iter().map(|m| m.pubkey).collect();
+        let real = fx.pubkeys();
+        assert!(
+            real.len() >= ours.len(),
+            "real instruction {} has {} accounts, struct expects {}",
+            fx.signature,
+            real.len(),
+            ours.len()
+        );
+        assert_eq!(
+            ours.as_slice(),
+            &real[..ours.len()],
+            "account order must match real instruction {} @ slot {}",
+            fx.signature,
+            fx.slot
+        );
+        // Flags are authoritative only for a top-level capture; verify
+        // the struct's `#[account(writable/signer)]` against the chain
+        // there. Skipped for inner CPIs (flags not recoverable).
+        //
+        // Compare real >= ours, not strict equality: a real tx may
+        // over-grant (pass an account writable/signer it doesn't need —
+        // costs compute but processes fine), and we can't assume other
+        // builders won't. A failure means WE declared a privilege a real
+        // successful tx proved unnecessary (over-declaration / wasted
+        // compute). Under-declaration is the revert case and surfaces
+        // when our own build fails, not here.
+        if fx.top_level() {
+            let our_metas = parsed.to_account_metas();
+            let real_metas = fx.account_metas();
+            for (i, (ours, real)) in
+                our_metas.iter().zip(real_metas.iter()).enumerate()
+            {
                 assert!(
-                    fx.data().len() >= 8,
-                    "instruction {} carries no discriminator",
-                    fx.signature
+                    real.is_writable || !ours.is_writable,
+                    "account {i} of {}: struct declares writable but the \
+                     real instruction has it readonly (over-declared)",
+                    fx.signature,
                 );
-                let parsed = #ident::from_pubkeys(&fx.pubkeys())
-                    .expect("from_pubkeys on the real instruction's accounts");
-                // Compare PUBKEYS only, never flags: a swap is usually an inner
-                // (CPI) instruction, and jsonParsed carries only message-level
-                // signer/writable flags, not the CPI's declared per-account
-                // privileges — so flags aren't recoverable and extraction never
-                // needs them. This asserts the struct's account count/order
-                // prefix matches the real landed instruction.
-                let ours: ::std::vec::Vec<_> =
-                    parsed.to_account_metas().into_iter().map(|m| m.pubkey).collect();
-                let real = fx.pubkeys();
                 assert!(
-                    real.len() >= ours.len(),
-                    "real instruction {} has {} accounts, struct expects {}",
+                    real.is_signer || !ours.is_signer,
+                    "account {i} of {}: struct declares signer but the \
+                     real instruction does not",
                     fx.signature,
-                    real.len(),
-                    ours.len()
                 );
-                assert_eq!(
-                    ours.as_slice(),
-                    &real[..ours.len()],
-                    "account order must match real instruction {} @ slot {}",
-                    fx.signature,
-                    fx.slot
-                );
-                // Flags are authoritative only for a top-level capture; verify
-                // the struct's `#[account(writable/signer)]` against the chain
-                // there. Skipped for inner CPIs (flags not recoverable).
-                //
-                // Compare real >= ours, not strict equality: a real tx may
-                // over-grant (pass an account writable/signer it doesn't need —
-                // costs compute but processes fine), and we can't assume other
-                // builders won't. A failure means WE declared a privilege a real
-                // successful tx proved unnecessary (over-declaration / wasted
-                // compute). Under-declaration is the revert case and surfaces
-                // when our own build fails, not here.
-                if fx.top_level() {
-                    let our_metas = parsed.to_account_metas();
-                    let real_metas = fx.account_metas();
-                    for (i, (ours, real)) in
-                        our_metas.iter().zip(real_metas.iter()).enumerate()
-                    {
-                        assert!(
-                            real.is_writable || !ours.is_writable,
-                            "account {i} of {}: struct declares writable but the \
-                             real instruction has it readonly (over-declared)",
-                            fx.signature,
-                        );
-                        assert!(
-                            real.is_signer || !ours.is_signer,
-                            "account {i} of {}: struct declares signer but the \
-                             real instruction does not",
-                            fx.signature,
-                        );
-                    }
-                }
-                 },
+            }
+        }
+         },
     );
 
     quote! {

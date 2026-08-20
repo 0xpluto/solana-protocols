@@ -47,7 +47,9 @@ pub struct BuyExactQuoteInV2Params {
     /// Minimum tokens to accept (slippage bound).
     pub min_tokens_out: u64,
     /// Trailing `track_volume` the IDL does not declare — see the module docs.
-    #[idl(undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures")]
+    #[idl(
+        undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures"
+    )]
     pub track_volume: OptionBool,
 }
 

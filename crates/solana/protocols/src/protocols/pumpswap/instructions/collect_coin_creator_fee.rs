@@ -14,9 +14,7 @@ use solana_protocols_macros::{AccountMetas, OnchainInstruction};
 
 /// Account list for `collect_coin_creator_fee`. 8 slots.
 #[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
-#[onchain_ix(fixtures(
-    "pumpswap/ix_collect_coin_creator_fee_n8.json"
-))]
+#[onchain_ix(fixtures("pumpswap/ix_collect_coin_creator_fee_n8.json"))]
 #[idl(program = "pump_amm", instruction = "collect_coin_creator_fee")]
 pub struct CollectCoinCreatorFeeAccounts {
     /// Mint the fees are denominated in.

@@ -11,7 +11,6 @@
 use solana_program::pubkey::Pubkey;
 use solana_protocols_macros::{AccountMetas, InstructionData};
 
-
 /// Arguments: none.
 #[derive(
     Debug,
@@ -32,7 +31,9 @@ pub struct MigrateParams;
 /// Accounts for `migrate` — 25 slots from the IDL.
 #[derive(Debug, Clone, AccountMetas)]
 #[idl(program = "pump", instruction = "migrate")]
-#[accounts(unverified = "the v1 migration; superseded by migrate_v2 and not seen in any firehose capture, so there is no real instruction to pin it against")]
+#[accounts(
+    unverified = "the v1 migration; superseded by migrate_v2 and not seen in any firehose capture, so there is no real instruction to pin it against"
+)]
 pub struct MigrateAccounts {
     /// IDL slot 0.
     #[account]

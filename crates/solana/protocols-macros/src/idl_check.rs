@@ -331,11 +331,7 @@ pub fn idl_args(program: &str, instruction: &str) -> Result<Vec<String>, String>
 ///
 /// Any disagreement in order or name, or a field past the IDL's list without a
 /// stated reason.
-pub fn check_args(
-    program: &str,
-    instruction: &str,
-    fields: &[EventField],
-) -> Result<(), String> {
+pub fn check_args(program: &str, instruction: &str, fields: &[EventField]) -> Result<(), String> {
     let expected = idl_args(program, instruction)?;
     let mut want = expected.iter();
     for f in fields {

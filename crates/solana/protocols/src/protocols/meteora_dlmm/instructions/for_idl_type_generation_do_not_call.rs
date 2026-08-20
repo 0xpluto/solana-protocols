@@ -22,7 +22,9 @@ pub use meteora_dlmm_sdk::instructions::ForIdlTypeGenerationDoNotCallInstruction
 pub use meteora_dlmm_sdk::instructions::FOR_IDL_TYPE_GENERATION_DO_NOT_CALL_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct ForIdlTypeGenerationDoNotCallAccounts {
     #[account]
     pub dummy_zc_account: Pubkey,

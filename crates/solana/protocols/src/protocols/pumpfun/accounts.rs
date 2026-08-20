@@ -7,7 +7,8 @@ use solana_program::pubkey::Pubkey;
 use spl_associated_token_account::get_associated_token_address;
 
 use super::constants::{
-    BONDING_CURVE_SEED, BONDING_CURVE_V2_SEED, CREATOR_VAULT_SEED, PROGRAM_ID, USER_VOLUME_ACCUMULATOR_SEED,
+    BONDING_CURVE_SEED, BONDING_CURVE_V2_SEED, CREATOR_VAULT_SEED, PROGRAM_ID,
+    USER_VOLUME_ACCUMULATOR_SEED,
 };
 
 /// All keys needed to build pump.fun swap instructions.

@@ -88,12 +88,17 @@ mod tests {
     /// conversion once shipped green while taking swaps to zero.
     #[test]
     fn the_real_body_decodes_and_refuses_a_trailing_byte() {
-        let hex = include_str!("../../../../fixtures/pumpswap/event_bodies/CreatePoolEvent_326.hex");
+        let hex =
+            include_str!("../../../../fixtures/pumpswap/event_bodies/CreatePoolEvent_326.hex");
         let body: Vec<u8> = (0..hex.trim().len())
             .step_by(2)
             .map(|i| u8::from_str_radix(&hex.trim()[i..i + 2], 16).expect("hex"))
             .collect();
-        assert_eq!(body.len(), 326, "the captured body is the size the IDL declares");
+        assert_eq!(
+            body.len(),
+            326,
+            "the captured body is the size the IDL declares"
+        );
         let ev = CreatePoolEvent::from_event_body(&body).expect("real body decodes");
 
         let mut longer = body.clone();

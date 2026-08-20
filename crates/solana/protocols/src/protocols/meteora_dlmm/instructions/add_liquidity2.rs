@@ -22,7 +22,9 @@ pub use meteora_dlmm_sdk::instructions::AddLiquidity2InstructionArgs;
 pub use meteora_dlmm_sdk::instructions::ADD_LIQUIDITY2_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct AddLiquidity2Accounts {
     #[account(writable)]
     pub position: Pubkey,

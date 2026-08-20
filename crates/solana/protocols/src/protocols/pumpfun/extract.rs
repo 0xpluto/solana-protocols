@@ -14,25 +14,21 @@
 use solana_program::pubkey::Pubkey;
 
 use super::events::{
-    CompleteEvent,
-    CreateEvent,
-    CompletePumpAmmMigrationEvent,CollectCreatorFeeEvent, DistributeCreatorFeesEvent, TradeEvent};
+    CollectCreatorFeeEvent, CompleteEvent, CompletePumpAmmMigrationEvent, CreateEvent,
+    DistributeCreatorFeesEvent, TradeEvent,
+};
 use super::{
-    MigrateAccounts, MigrateParams, MigrateV2Accounts, MigrateV2Params,
     BuyAccounts, BuyExactQuoteInV2Params, BuyExactSolInParams, BuyParams, BuyV2Accounts,
-    BuyV2Params,
-    CollectCreatorFeeParams, CollectCreatorFeeV2Params, CreateAccounts, CreateParams,
+    BuyV2Params, CollectCreatorFeeParams, CollectCreatorFeeV2Params, CreateAccounts, CreateParams,
     CreateV2Accounts, CreateV2Params, DistributeCreatorFeesParams, DistributeCreatorFeesV2Params,
-    PumpfunInstruction, SellAccounts, SellParams, SellV2Accounts, SellV2Params,
-    PROGRAM_ID as PUMPFUN_PROGRAM,
+    MigrateAccounts, MigrateParams, MigrateV2Accounts, MigrateV2Params, PumpfunInstruction,
+    SellAccounts, SellParams, SellV2Accounts, SellV2Params, PROGRAM_ID as PUMPFUN_PROGRAM,
 };
 use crate::chain::{
-    optional_child_event,
-    ExtractsMigration,
-    Migration,
-    child_event, corroborate, report_extract_failure, ChainEvent, CreatorFee, CreatorPayout,
-    CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreation, ExtractsCreatorFee,
-    ExtractsSwap, ProtocolExtractor, Swap, TokenCreation,
+    child_event, corroborate, optional_child_event, report_extract_failure, ChainEvent, CreatorFee,
+    CreatorPayout, CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreation,
+    ExtractsCreatorFee, ExtractsMigration, ExtractsSwap, Migration, ProtocolExtractor, Swap,
+    TokenCreation,
 };
 use crate::parsing::anchor::ANCHOR_EVENT_TAG;
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
@@ -108,7 +104,11 @@ impl PumpfunExtractor {
             PumpfunInstruction::SellV2(p) => swap_via(p, ix, all, ctx),
             PumpfunInstruction::Create(p) => {
                 let ev = optional_child_event::<CreateEvent>(ix, all, &PUMPFUN_PROGRAM)?;
-                Ok(Some(ChainEvent::TokenCreation(p.creation(ev.as_ref(), ix, ctx)?)))
+                Ok(Some(ChainEvent::TokenCreation(p.creation(
+                    ev.as_ref(),
+                    ix,
+                    ctx,
+                )?)))
             }
             // Graduation, from pumpfun's own side. The amounts are in the
             // event; the accounts name the curve and the pool it became. The
@@ -123,13 +123,11 @@ impl PumpfunExtractor {
                 let ev = child_event::<CompletePumpAmmMigrationEvent>(ix, all, &PUMPFUN_PROGRAM)?;
                 Ok(Some(ChainEvent::Migration(p.migration(&ev, ix)?)))
             }
-            PumpfunInstruction::CreateV2(p) => {
-                Ok(Some(ChainEvent::TokenCreation(p.creation(
-                    optional_child_event::<CreateEvent>(ix, all, &PUMPFUN_PROGRAM)?.as_ref(),
-                    ix,
-                    ctx,
-                )?)))
-            }
+            PumpfunInstruction::CreateV2(p) => Ok(Some(ChainEvent::TokenCreation(p.creation(
+                optional_child_event::<CreateEvent>(ix, all, &PUMPFUN_PROGRAM)?.as_ref(),
+                ix,
+                ctx,
+            )?))),
             PumpfunInstruction::CollectCreatorFee(p) => fee_via(p, ix, all),
             PumpfunInstruction::CollectCreatorFeeV2(p) => fee_via(p, ix, all),
             PumpfunInstruction::DistributeCreatorFees(p) => fee_via(p, ix, all),
@@ -465,15 +463,27 @@ trait MigrationAccounts {
 }
 
 impl MigrationAccounts for MigrateAccounts {
-    fn mint(&self) -> Pubkey { self.mint }
-    fn bonding_curve(&self) -> Pubkey { self.bonding_curve }
-    fn pool(&self) -> Pubkey { self.pool }
+    fn mint(&self) -> Pubkey {
+        self.mint
+    }
+    fn bonding_curve(&self) -> Pubkey {
+        self.bonding_curve
+    }
+    fn pool(&self) -> Pubkey {
+        self.pool
+    }
 }
 
 impl MigrationAccounts for MigrateV2Accounts {
-    fn mint(&self) -> Pubkey { self.base_mint }
-    fn bonding_curve(&self) -> Pubkey { self.bonding_curve }
-    fn pool(&self) -> Pubkey { self.pool }
+    fn mint(&self) -> Pubkey {
+        self.base_mint
+    }
+    fn bonding_curve(&self) -> Pubkey {
+        self.bonding_curve
+    }
+    fn pool(&self) -> Pubkey {
+        self.pool
+    }
 }
 
 fn migration_from<A: MigrationAccounts + crate::parsing::FromAccountKeys>(
@@ -1199,14 +1209,10 @@ mod v2_identity {
 
     /// A `sell_v2` account list with the identity slots at their IDL indices
     /// and `extra` remaining accounts appended.
-    fn sell_v2_accounts(
-        mint: Pubkey,
-        user: Pubkey,
-        pool: Pubkey,
-        extra: usize,
-    ) -> Vec<Pubkey> {
-        let mut a: Vec<Pubkey> =
-            std::iter::repeat_with(Pubkey::new_unique).take(26).collect();
+    fn sell_v2_accounts(mint: Pubkey, user: Pubkey, pool: Pubkey, extra: usize) -> Vec<Pubkey> {
+        let mut a: Vec<Pubkey> = std::iter::repeat_with(Pubkey::new_unique)
+            .take(26)
+            .collect();
         a[1] = mint; // base_mint
         a[10] = pool; // bonding_curve
         a[13] = user; // user

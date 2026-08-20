@@ -183,7 +183,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
         let arg_fields: Vec<crate::idl_check::EventField> = fields
             .iter()
             .map(|f| crate::idl_check::EventField {
-                name: f.ident.as_ref().map(ToString::to_string).unwrap_or_default(),
+                name: f
+                    .ident
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_default(),
                 undeclared: f.attrs.iter().find_map(|a| {
                     if !a.path().is_ident("idl") {
                         return None;
@@ -226,8 +230,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let params_test = if fixtures.is_empty() {
         quote!()
     } else {
-        let test_mod =
-            quote::format_ident!("__params_fixture_{}", name.to_string().to_lowercase());
+        let test_mod = quote::format_ident!("__params_fixture_{}", name.to_string().to_lowercase());
         let walk = crate::fixture_walk::walk(
             name,
             &fixtures,

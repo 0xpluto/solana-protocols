@@ -140,7 +140,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 .fields
                 .iter()
                 .map(|f| crate::idl_check::EventField {
-                    name: f.ident.as_ref().map(ToString::to_string).unwrap_or_default(),
+                    name: f
+                        .ident
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_default(),
                     undeclared: f.attrs.iter().find_map(|a| {
                         if !a.path().is_ident("idl") {
                             return None;
@@ -205,7 +209,9 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let mut groups: Vec<(String, Vec<syn::Ident>)> = Vec::new();
     if let syn::Data::Struct(st) = &input.data {
         for field in &st.fields {
-            let Some(ident) = field.ident.clone() else { continue };
+            let Some(ident) = field.ident.clone() else {
+                continue;
+            };
             for attr in &field.attrs {
                 if !attr.path().is_ident("state") {
                     continue;

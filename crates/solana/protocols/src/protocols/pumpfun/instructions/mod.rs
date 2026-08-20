@@ -66,7 +66,9 @@ pub use common::{
 pub use create::{CreateAccounts, CreateParams};
 pub use create_v2::{CreateV2Accounts, CreateV2Params};
 pub use distribute_creator_fees::{DistributeCreatorFeesAccounts, DistributeCreatorFeesParams};
-pub use distribute_creator_fees_v2::{DistributeCreatorFeesV2Accounts, DistributeCreatorFeesV2Params};
+pub use distribute_creator_fees_v2::{
+    DistributeCreatorFeesV2Accounts, DistributeCreatorFeesV2Params,
+};
 pub use migrate::{MigrateAccounts, MigrateParams};
 pub use migrate_v2::{MigrateV2Accounts, MigrateV2Params};
 pub use sell::{SellAccounts, SellBuilder, SellParams};
@@ -74,11 +76,10 @@ pub use sell_v2::{SellV2Accounts, SellV2Params};
 
 use super::constants::{
     BUY_DISCRIMINATOR, BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR, BUY_EXACT_SOL_IN_DISCRIMINATOR,
-    MIGRATE_DISCRIMINATOR, MIGRATE_V2_DISCRIMINATOR,
     BUY_V2_DISCRIMINATOR, COLLECT_CREATOR_FEE_DISCRIMINATOR, COLLECT_CREATOR_FEE_V2_DISCRIMINATOR,
     CREATE_DISCRIMINATOR, CREATE_V2_DISCRIMINATOR, DISTRIBUTE_CREATOR_FEES_DISCRIMINATOR,
-    DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR, PROGRAM_ID, SELL_DISCRIMINATOR,
-    SELL_V2_DISCRIMINATOR,
+    DISTRIBUTE_CREATOR_FEES_V2_DISCRIMINATOR, MIGRATE_DISCRIMINATOR, MIGRATE_V2_DISCRIMINATOR,
+    PROGRAM_ID, SELL_DISCRIMINATOR, SELL_V2_DISCRIMINATOR,
 };
 use solana_program::pubkey::Pubkey;
 
@@ -449,7 +450,12 @@ mod v2_account_layout {
             assert_eq!(got_user, user, "{ix} n={}: user slot", k.len());
             // The terminator. Its position proves the whole named prefix: an
             // inserted account would shift it and nothing else needs checking.
-            assert_eq!(got_program, program, "{ix} n={}: program terminator", k.len());
+            assert_eq!(
+                got_program,
+                program,
+                "{ix} n={}: program terminator",
+                k.len()
+            );
         }
     }
 
@@ -495,7 +501,10 @@ mod v2_account_layout {
         }
         assert!(total > 0, "no tailed records — the fixture changed");
         assert_eq!(with_curve, total, "every tail carries a bonding_curve_v2");
-        assert!(with_vaults > 0, "the buyback_vaults path is never exercised");
+        assert!(
+            with_vaults > 0,
+            "the buyback_vaults path is never exercised"
+        );
     }
 
     /// Nothing dropped, nothing invented: the named appended fields plus the

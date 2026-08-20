@@ -23,7 +23,9 @@ use crate::traits::InstructionBuilder;
 /// \[7\]=output_vault(writable), \[8\]=input_token_program, \[9\]=output_token_program,
 /// \[10\]=input_token_mint, \[11\]=output_token_mint, \[12\]=observation_state(writable)
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct SwapAccounts {
     /// User wallet (signer).
     #[account(signer, writable)]

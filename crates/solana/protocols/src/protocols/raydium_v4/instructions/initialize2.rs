@@ -18,7 +18,9 @@ use super::super::constants::INITIALIZE2_IX;
 /// \[15\]=market_program, \[16\]=market, \[17\]=user, \[18\]=user_coin,
 /// \[19\]=user_pc, \[20\]=user_lp
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct Initialize2Accounts {
     /// SPL Token program.
     #[account]

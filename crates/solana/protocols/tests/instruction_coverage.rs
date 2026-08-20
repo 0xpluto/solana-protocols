@@ -153,7 +153,10 @@ fn instruction_coverage_over_every_witnessed_shape() {
     });
 
     let mut tally: BTreeMap<&str, usize> = BTreeMap::new();
-    println!("\n=== instruction coverage over {} witnessed shapes ===\n", rows.len());
+    println!(
+        "\n=== instruction coverage over {} witnessed shapes ===\n",
+        rows.len()
+    );
     println!(
         "{:<10} {:<30} {:>5} {:>5}  verdict",
         "protocol", "instruction", "decl", "seen"
@@ -168,7 +171,11 @@ fn instruction_coverage_over_every_witnessed_shape() {
             r.declared,
             r.actual,
             r.verdict.label(),
-            if tail > 0 { format!("tail={tail} ") } else { String::new() },
+            if tail > 0 {
+                format!("tail={tail} ")
+            } else {
+                String::new()
+            },
             r.detail,
         );
     }

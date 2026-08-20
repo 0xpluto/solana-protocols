@@ -61,10 +61,10 @@
 use proc_macro::TokenStream;
 
 mod account_metas;
-mod fixture_walk;
 mod build_accounts;
 mod discriminator;
 mod event_layout;
+mod fixture_walk;
 mod idl_check;
 mod instruction_data;
 mod log_parser;

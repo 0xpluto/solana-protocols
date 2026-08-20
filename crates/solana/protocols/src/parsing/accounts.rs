@@ -132,6 +132,9 @@ mod tests {
             present: "tick_array",
         };
         let msg = e.to_string();
-        assert!(msg.contains("bitmap_extension") && msg.contains("tick_array"), "{msg}");
+        assert!(
+            msg.contains("bitmap_extension") && msg.contains("tick_array"),
+            "{msg}"
+        );
     }
 }

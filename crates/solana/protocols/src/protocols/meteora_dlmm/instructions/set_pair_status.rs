@@ -22,7 +22,9 @@ pub use meteora_dlmm_sdk::instructions::SetPairStatusInstructionArgs;
 pub use meteora_dlmm_sdk::instructions::SET_PAIR_STATUS_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct SetPairStatusAccounts {
     #[account(writable)]
     pub lb_pair: Pubkey,

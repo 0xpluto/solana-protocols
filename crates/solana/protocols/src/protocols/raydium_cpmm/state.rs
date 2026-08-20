@@ -35,7 +35,9 @@ pub enum PoolStatusBitIndex {
 /// accounts (token_0_vault, token_1_vault). Use `spot_price_with_vaults()`
 /// when vault balances are available.
 #[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
-#[state(unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK")]
+#[state(
+    unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK"
+)]
 #[state(discriminator = CPMM_POOL_STATE_DISCRIMINATOR)]
 #[state(fixtures("raydium_cpmm/pool_account.json"))]
 pub struct CpmmPoolState {

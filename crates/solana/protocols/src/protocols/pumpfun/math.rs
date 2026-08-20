@@ -364,7 +364,7 @@ mod tests {
     fn test_curve() -> BondingCurve {
         BondingCurve {
             virtual_token_reserves: 1_000_000_000_000_000, // 1B tokens (6 decimals)
-            virtual_quote_reserves: 30_000_000_000,          // 30 SOL (9 decimals)
+            virtual_quote_reserves: 30_000_000_000,        // 30 SOL (9 decimals)
             real_token_reserves: 800_000_000_000_000,
             real_quote_reserves: 0,
             token_total_supply: 1_000_000_000_000_000,

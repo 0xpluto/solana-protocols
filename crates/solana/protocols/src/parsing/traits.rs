@@ -25,10 +25,7 @@ use super::InstructionParseError;
 ///
 /// Hand-writing a decoder is now a compile error: an `impl FromInstructionData`
 /// collides with the blanket impl, and rustc says so in those words.
-pub trait InstructionParams:
-    borsh::BorshDeserialize + borsh::BorshSerialize + Sized
-{
-}
+pub trait InstructionParams: borsh::BorshDeserialize + borsh::BorshSerialize + Sized {}
 
 /// Private supertrait: the seal.
 ///
@@ -77,7 +74,6 @@ impl<T: InstructionParams> FromInstructionData for T {
         })
     }
 }
-
 
 /// Trait for types that can be constructed from account pubkeys.
 ///

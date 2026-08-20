@@ -202,10 +202,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             Ok(())
         });
     }
-    let has_proof = input
-        .attrs
-        .iter()
-        .any(|a| a.path().is_ident("onchain_ix"));
+    let has_proof = input.attrs.iter().any(|a| a.path().is_ident("onchain_ix"));
     if !has_proof && unverified.as_ref().is_none_or(|r| r.trim().len() < 12) {
         return syn::Error::new_spanned(
             &input.ident,

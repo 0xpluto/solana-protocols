@@ -13,8 +13,8 @@
 //! flag. Using the wrong recipient → transaction reverts.
 
 use borsh::BorshDeserialize;
-use solana_protocols_macros::OnchainState;
 use solana_program::pubkey::Pubkey;
+use solana_protocols_macros::OnchainState;
 
 /// Full layout of the Pumpfun Global state account.
 ///

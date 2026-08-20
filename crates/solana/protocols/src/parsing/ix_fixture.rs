@@ -254,7 +254,11 @@ mod tests {
     fn a_captured_fixture_records_the_whole_account_list() {
         let i = ix(18, 0xAB, 1);
         let f = fixture_for("sig", 42, &i);
-        assert_eq!(f.accounts.len(), 18, "every account, not just the modelled ones");
+        assert_eq!(
+            f.accounts.len(),
+            18,
+            "every account, not just the modelled ones"
+        );
         assert_eq!(f.discriminator, vec![0xAB; 8]);
         assert!(
             !f.top_level,
@@ -291,7 +295,11 @@ mod tests {
             .stack_height(2)
             .instruction_index(0)
             .build();
-        assert_eq!(e.data[..8], ANCHOR_EVENT_TAG, "the tag is a constant, not a hash");
+        assert_eq!(
+            e.data[..8],
+            ANCHOR_EVENT_TAG,
+            "the tag is a constant, not a hash"
+        );
     }
 
     /// Off by default: production must pay nothing but one env lookup, and a

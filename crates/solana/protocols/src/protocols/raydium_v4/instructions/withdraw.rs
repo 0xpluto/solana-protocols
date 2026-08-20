@@ -18,7 +18,9 @@ use super::super::constants::WITHDRAW_IX;
 /// \[14\]=user_coin, \[15\]=user_pc, \[16\]=user, \[17\]=market_event_queue,
 /// \[18\]=market_bids, \[19\]=market_asks
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct WithdrawAccounts {
     /// SPL Token program.
     #[account]

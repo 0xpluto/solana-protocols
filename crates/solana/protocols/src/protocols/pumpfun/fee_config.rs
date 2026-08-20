@@ -15,8 +15,8 @@
 //! 4. Use the returned [`PumpfunFees`] in swap math.
 
 use borsh::BorshDeserialize;
-use solana_protocols_macros::OnchainState;
 use solana_program::pubkey::Pubkey;
+use solana_protocols_macros::OnchainState;
 
 /// Fee rates for a given tier (basis points out of
 /// [`FEE_DENOMINATOR`](super::constants::FEE_DENOMINATOR) = 10000).

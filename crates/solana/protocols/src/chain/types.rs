@@ -89,7 +89,10 @@ impl ParsedTransaction {
     pub fn swaps(&self) -> impl Iterator<Item = &Swap> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::Swap(s) => Some(s),
-            ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) | ChainEvent::Liquidity(_) => None,
+            ChainEvent::TokenCreation(_)
+            | ChainEvent::Migration(_)
+            | ChainEvent::CreatorFee(_)
+            | ChainEvent::Liquidity(_) => None,
         })
     }
 
@@ -97,7 +100,10 @@ impl ParsedTransaction {
     pub fn token_creations(&self) -> impl Iterator<Item = &TokenCreation> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::TokenCreation(c) => Some(c),
-            ChainEvent::Swap(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) | ChainEvent::Liquidity(_) => None,
+            ChainEvent::Swap(_)
+            | ChainEvent::Migration(_)
+            | ChainEvent::CreatorFee(_)
+            | ChainEvent::Liquidity(_) => None,
         })
     }
 
@@ -105,7 +111,10 @@ impl ParsedTransaction {
     pub fn migrations(&self) -> impl Iterator<Item = &Migration> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::Migration(m) => Some(m),
-            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::CreatorFee(_) | ChainEvent::Liquidity(_) => None,
+            ChainEvent::Swap(_)
+            | ChainEvent::TokenCreation(_)
+            | ChainEvent::CreatorFee(_)
+            | ChainEvent::Liquidity(_) => None,
         })
     }
 
@@ -124,7 +133,10 @@ impl ParsedTransaction {
     pub fn creator_fees(&self) -> impl Iterator<Item = &CreatorFee> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::CreatorFee(c) => Some(c),
-            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) | ChainEvent::Liquidity(_) => None,
+            ChainEvent::Swap(_)
+            | ChainEvent::TokenCreation(_)
+            | ChainEvent::Migration(_)
+            | ChainEvent::Liquidity(_) => None,
         })
     }
 

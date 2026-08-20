@@ -6,10 +6,9 @@
 //! zero-argument type. The v1 form takes nothing; this takes a bool. A single
 //! params type would have to be wrong for one of them.
 
+use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
 use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
-use serde::{Deserialize, Serialize};
-
 
 /// Arguments for `distribute_creator_fees_v2`.
 #[derive(
@@ -33,8 +32,6 @@ pub struct DistributeCreatorFeesV2Params {
     /// as part of the distribution.
     pub initialize_ata: bool,
 }
-
-
 
 #[cfg(test)]
 mod tests {

@@ -20,7 +20,9 @@ use super::super::constants::DEPOSIT_DISCRIMINATOR;
 /// \[15\]=associated_token_program, \[16\]=event_authority, \[17\]=program
 #[derive(Debug, Clone, AccountMetas)]
 #[idl(program = "pump_amm", instruction = "deposit")]
-#[accounts(unverified = "not witnessed on the firehose during capture, so there is no real instruction to pin the account list against")]
+#[accounts(
+    unverified = "not witnessed on the firehose during capture, so there is no real instruction to pin the account list against"
+)]
 pub struct DepositAccounts {
     /// IDL slot 0.
     #[account(writable)]

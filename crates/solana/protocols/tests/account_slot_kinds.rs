@@ -93,7 +93,9 @@ fn conditional_and_rest_extend_the_list() {
 #[test]
 fn parsing_cannot_produce_a_hole() {
     for len in 3..=6 {
-        let keys: Vec<Pubkey> = (0..len).map(|i| k(u8::try_from(i).expect("small"))).collect();
+        let keys: Vec<Pubkey> = (0..len)
+            .map(|i| k(u8::try_from(i).expect("small")))
+            .collect();
         let a = SwapV2Accounts::from_pubkeys(&keys).expect("parses");
         if !a.tick_arrays.is_empty() {
             assert!(
@@ -116,7 +118,9 @@ fn building_a_hole_is_refused() {
     };
     // The infallible path still exists for structs without conditionals, so the
     // check has to be on the path a conditional-bearing builder calls.
-    let err = a.try_to_account_metas().expect_err("a hole must be refused");
+    let err = a
+        .try_to_account_metas()
+        .expect_err("a hole must be refused");
     assert_eq!(err.absent, "bitmap_extension");
     assert_eq!(err.present, "tick_arrays");
 

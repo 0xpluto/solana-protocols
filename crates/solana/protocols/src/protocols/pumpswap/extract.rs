@@ -27,8 +27,7 @@
 use solana_program::pubkey::Pubkey;
 
 use super::events::{
-    BuyEvent, CollectCoinCreatorFeeEvent, CreatePoolEvent, DepositEvent, SellEvent,
-    WithdrawEvent,
+    BuyEvent, CollectCoinCreatorFeeEvent, CreatePoolEvent, DepositEvent, SellEvent, WithdrawEvent,
 };
 use super::{
     BuyAccounts, BuyExactQuoteInParams, BuyParams, CollectCoinCreatorFeeAccounts,

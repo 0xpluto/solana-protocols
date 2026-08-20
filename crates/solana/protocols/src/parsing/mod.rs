@@ -41,11 +41,11 @@
 //! ```
 
 pub mod accounts;
-pub mod ix_fixture;
 pub mod anchor;
 mod classify;
 pub mod event;
 mod instruction;
+pub mod ix_fixture;
 mod log;
 pub mod log_fixture;
 mod registry;
@@ -71,8 +71,8 @@ pub use registry::{
 };
 pub use source::{SourceError, TokenBalanceChange, TransactionMeta, TransactionSource};
 pub use traits::{
-    InstructionParams,
-    FromAccountKeys, FromInstructionData, FromLogData, NoParams, VerifiedInstruction,
+    FromAccountKeys, FromInstructionData, FromLogData, InstructionParams, NoParams,
+    VerifiedInstruction,
 };
 
 // Layer 2: Classification

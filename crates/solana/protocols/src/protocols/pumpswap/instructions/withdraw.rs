@@ -20,9 +20,7 @@ use super::super::constants::WITHDRAW_DISCRIMINATOR;
 /// \[15\]=associated_token_program, \[16\]=event_authority, \[17\]=program
 #[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
 #[idl(program = "pump_amm", instruction = "withdraw")]
-#[onchain_ix(fixtures(
-    "pumpswap/ix_withdraw_n15.json"
-))]
+#[onchain_ix(fixtures("pumpswap/ix_withdraw_n15.json"))]
 pub struct WithdrawAccounts {
     /// IDL slot 0.
     #[account(writable)]
@@ -96,7 +94,11 @@ pub struct WithdrawParams {
 impl WithdrawParams {
     /// Create new Withdraw parameters.
     #[must_use]
-    pub fn new(lp_token_amount_in: u64, min_base_amount_out: u64, min_quote_amount_out: u64) -> Self {
+    pub fn new(
+        lp_token_amount_in: u64,
+        min_base_amount_out: u64,
+        min_quote_amount_out: u64,
+    ) -> Self {
         Self {
             lp_token_amount_in,
             min_base_amount_out,

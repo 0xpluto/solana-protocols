@@ -21,7 +21,9 @@ use super::super::constants::SWAP_DISCRIMINATOR;
 ///
 /// Remaining accounts (index 9+) are tick array accounts (writable, variable count).
 #[derive(Debug, Clone, AccountMetas)]
-#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
 pub struct SwapAccounts {
     /// User wallet (signer).
     #[account(signer)]

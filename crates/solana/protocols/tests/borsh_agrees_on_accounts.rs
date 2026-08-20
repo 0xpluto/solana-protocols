@@ -13,11 +13,8 @@ use borsh::BorshDeserialize;
 use solana_protocols::parsing::state::OnchainState;
 
 fn account(fixture: &str) -> Vec<u8> {
-    let raw = std::fs::read_to_string(format!(
-        "{}/fixtures/{fixture}",
-        env!("CARGO_MANIFEST_DIR")
-    ))
-    .expect("fixture");
+    let raw = std::fs::read_to_string(format!("{}/fixtures/{fixture}", env!("CARGO_MANIFEST_DIR")))
+        .expect("fixture");
     let v: serde_json::Value = serde_json::from_str(&raw).expect("json");
     use base64::Engine as _;
     base64::engine::general_purpose::STANDARD
@@ -30,11 +27,21 @@ fn account(fixture: &str) -> Vec<u8> {
 macro_rules! agree {
     ($ty:ty, $fixture:literal) => {{
         let data = account($fixture);
-        let walked = <$ty as OnchainState>::from_account_data(&data)
-            .unwrap_or_else(|e| panic!("{} offset walk failed on {}: {e}", stringify!($ty), $fixture));
+        let walked = <$ty as OnchainState>::from_account_data(&data).unwrap_or_else(|e| {
+            panic!(
+                "{} offset walk failed on {}: {e}",
+                stringify!($ty),
+                $fixture
+            )
+        });
         let mut cursor = &data[8..];
         let borshed = <$ty as BorshDeserialize>::deserialize(&mut cursor).unwrap_or_else(|e| {
-            panic!("{} borsh failed on {} ({} bytes): {e}", stringify!($ty), $fixture, data.len())
+            panic!(
+                "{} borsh failed on {} ({} bytes): {e}",
+                stringify!($ty),
+                $fixture,
+                data.len()
+            )
         });
         assert_eq!(
             format!("{walked:?}"),
@@ -49,21 +56,42 @@ macro_rules! agree {
 fn pumpswap_pool_agrees_at_every_observed_size() {
     // Three allocations, one field span. The padded ones are why accounts get a
     // prefix read.
-    agree!(solana_protocols::pumpswap::PumpSwapPool, "pumpswap/pool_v1_261.json");
-    agree!(solana_protocols::pumpswap::PumpSwapPool, "pumpswap/pool_v2_300.json");
-    agree!(solana_protocols::pumpswap::PumpSwapPool, "pumpswap/pool_v3_full_301.json");
+    agree!(
+        solana_protocols::pumpswap::PumpSwapPool,
+        "pumpswap/pool_v1_261.json"
+    );
+    agree!(
+        solana_protocols::pumpswap::PumpSwapPool,
+        "pumpswap/pool_v2_300.json"
+    );
+    agree!(
+        solana_protocols::pumpswap::PumpSwapPool,
+        "pumpswap/pool_v3_full_301.json"
+    );
 }
 
 #[test]
 fn raydium_pools_agree() {
-    agree!(solana_protocols::raydium_cpmm::CpmmPoolState, "raydium_cpmm/pool_account.json");
-    agree!(solana_protocols::raydium_clmm::PoolState, "raydium_clmm/pool_account.json");
-    agree!(solana_protocols::raydium_launchpad::LaunchpadPoolState, "raydium_launchpad/pool_account.json");
+    agree!(
+        solana_protocols::raydium_cpmm::CpmmPoolState,
+        "raydium_cpmm/pool_account.json"
+    );
+    agree!(
+        solana_protocols::raydium_clmm::PoolState,
+        "raydium_clmm/pool_account.json"
+    );
+    agree!(
+        solana_protocols::raydium_launchpad::LaunchpadPoolState,
+        "raydium_launchpad/pool_account.json"
+    );
 }
 
 #[test]
 fn meteora_dbc_virtual_pool_agrees() {
-    agree!(solana_protocols::meteora_dbc::VirtualPool, "meteora_dbc/pool_account.json");
+    agree!(
+        solana_protocols::meteora_dbc::VirtualPool,
+        "meteora_dbc/pool_account.json"
+    );
 }
 
 /// The version-added case, which is the one borsh cannot see: `Present` vs
@@ -73,5 +101,8 @@ fn meteora_dbc_virtual_pool_agrees() {
 /// because it is the least obvious claim in it.
 #[test]
 fn pumpfun_bonding_curve_agrees_including_its_legacy_fields() {
-    agree!(solana_protocols::pumpfun::BondingCurve, "pumpfun/bonding_curve_150.json");
+    agree!(
+        solana_protocols::pumpfun::BondingCurve,
+        "pumpfun/bonding_curve_150.json"
+    );
 }
