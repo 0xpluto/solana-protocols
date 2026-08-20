@@ -66,7 +66,7 @@ pub struct SwapAccounts {
 }
 
 /// SwapBaseInput instruction parameters.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SWAP_BASE_INPUT_DISCRIMINATOR)]
 pub struct SwapBaseInputParams {
     /// Input token amount.
@@ -87,7 +87,7 @@ impl SwapBaseInputParams {
 }
 
 /// SwapBaseOutput instruction parameters.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SWAP_BASE_OUTPUT_DISCRIMINATOR)]
 pub struct SwapBaseOutputParams {
     /// Maximum input tokens (slippage protection).

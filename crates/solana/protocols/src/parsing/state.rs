@@ -49,6 +49,38 @@ pub enum Legacy<T> {
     Absent,
 }
 
+impl<T: borsh::BorshDeserialize> borsh::BorshDeserialize for Legacy<T> {
+    /// Read the field if the account still has bytes for it, otherwise
+    /// [`Absent`](Self::Absent).
+    ///
+    /// # This is only correct where the account is not padded
+    ///
+    /// Solana allocates accounts at or above their data size — PumpSwap pools
+    /// arrive at 261, 300 and 301 bytes over the same 244-byte field span — and
+    /// padding is bytes, indistinguishable from a field holding zero. So EOF is
+    /// a *sufficient* signal for absence and not a necessary one: a
+    /// version-added field sitting in front of padding reads `Present(0)`, which
+    /// is exactly the absent-equals-false collapse this type exists to prevent.
+    ///
+    /// The `OnchainState` derive therefore does not rely on this impl for
+    /// version groups; it keeps an explicit length threshold, which is the only
+    /// thing that can tell a short account from a padded one. This impl exists
+    /// so `Legacy<T>` composes inside plain borsh structs where the payload is
+    /// exact — event bodies — and it is documented here so nobody reaches for it
+    /// on an account and quietly gets the wrong answer.
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        use std::io::Read as _;
+        let mut probe = [0u8; 1];
+        match reader.read(&mut probe)? {
+            0 => Ok(Self::Absent),
+            _ => {
+                let mut chained = probe.as_slice().chain(reader.by_ref());
+                T::deserialize_reader(&mut chained).map(Self::Present)
+            }
+        }
+    }
+}
+
 /// Why raw account bytes could not be read as this type.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum AccountParseError {

@@ -17,7 +17,18 @@ use solana_protocols_macros::InstructionData;
 use super::super::constants::SELL_V2_DISCRIMINATOR;
 
 /// Arguments for `sell_v2`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = SELL_V2_DISCRIMINATOR)]
 pub struct SellV2Params {
     /// Tokens to sell — the pinned side.

@@ -85,7 +85,7 @@ pub struct WithdrawAccounts {
 ///
 /// Uses 1-byte instruction index (0x04).
 /// Actual withdrawn amounts come from CPI transfers, not these params.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = [WITHDRAW_IX], discriminator_size = 1)]
 pub struct WithdrawParams {
     /// LP token amount to burn (withdraw).

@@ -11,7 +11,18 @@ use serde::{Deserialize, Serialize};
 use crate::parsing::{FromInstructionData, InstructionParseError};
 
 /// Arguments for `distribute_creator_fees_v2`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+)]
 pub struct DistributeCreatorFeesV2Params {
     /// Whether the program should create the creator's associated token account
     /// as part of the distribution.

@@ -105,7 +105,7 @@ pub struct CreateV2Accounts {
 
 /// Parameters for the `create_v2` instruction. Strict superset of
 /// [`CreateParams`](super::CreateParams).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, borsh::BorshSerialize)]
 pub struct CreateV2Params {
     /// Token name.
     pub name: String,

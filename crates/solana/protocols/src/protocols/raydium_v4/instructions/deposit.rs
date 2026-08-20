@@ -65,7 +65,7 @@ pub struct DepositAccounts {
 ///
 /// Uses 1-byte instruction index (0x03).
 /// Actual deposited amounts come from CPI transfers, not these params.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = [DEPOSIT_IX], discriminator_size = 1)]
 pub struct DepositParams {
     /// Maximum coin (base) tokens to deposit.

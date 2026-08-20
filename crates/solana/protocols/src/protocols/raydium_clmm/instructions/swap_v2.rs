@@ -75,7 +75,7 @@ pub struct SwapV2Accounts {
 /// SwapV2 instruction parameters (identical to Swap v1 params).
 ///
 /// Uses 8-byte Anchor discriminator.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SWAP_V2_DISCRIMINATOR)]
 pub struct SwapV2Params {
     /// Input amount (or output amount if `is_base_input` is false).

@@ -103,7 +103,7 @@ impl SellAccounts {
 }
 
 /// Parameters for a sell instruction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, borsh::BorshSerialize)]
 pub struct SellParams {
     /// Amount of tokens to sell.
     pub amount: u64,

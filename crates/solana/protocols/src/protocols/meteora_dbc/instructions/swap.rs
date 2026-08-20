@@ -73,7 +73,7 @@ pub struct SwapAccounts {
 }
 
 /// Legacy swap instruction parameters (exact-in only).
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SWAP_DISCRIMINATOR)]
 pub struct SwapParams {
     /// Amount of input tokens.
@@ -118,7 +118,7 @@ impl SwapMode {
 }
 
 /// Swap2 instruction parameters (supports multiple modes).
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SWAP2_DISCRIMINATOR)]
 pub struct Swap2Params {
     /// For ExactIn/PartialFill: amount_in. For ExactOut: amount_out.

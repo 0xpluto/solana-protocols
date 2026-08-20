@@ -173,6 +173,32 @@ impl std::fmt::Display for Trailer {
     }
 }
 
+impl borsh::BorshDeserialize for OptionBool {
+    /// Consume the remainder of the argument buffer.
+    ///
+    /// This is the one encoding in the crate borsh cannot express, which is why
+    /// it stays hand-written while everything containing it is derived. The
+    /// argument is nought to two bytes depending on which convention the sender
+    /// used, or an unattributable trailer — a length the type system cannot see
+    /// from the field alone, only from "whatever is left".
+    ///
+    /// It therefore has to be the final field of any params struct, which
+    /// `#[derive(borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]` already enforces with a compile error.
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        let mut rest = Vec::new();
+        reader.read_to_end(&mut rest)?;
+        Self::from_bytes(&rest).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    }
+}
+
+impl borsh::BorshSerialize for OptionBool {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Raw, no length prefix — it was read as a remainder and a round trip
+        // has to reproduce the sender's exact bytes.
+        writer.write_all(self.to_bytes())
+    }
+}
+
 impl OptionBool {
     /// The exact bytes this form serializes to.
     ///

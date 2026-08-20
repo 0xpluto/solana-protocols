@@ -87,7 +87,7 @@ pub struct Initialize2Accounts {
 /// Initialize2 instruction parameters.
 ///
 /// Uses 1-byte instruction index (0x01).
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = [INITIALIZE2_IX], discriminator_size = 1)]
 pub struct Initialize2Params {
     /// Nonce for PDA derivation.

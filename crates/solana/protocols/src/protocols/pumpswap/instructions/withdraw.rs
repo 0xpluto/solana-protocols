@@ -77,7 +77,15 @@ pub struct WithdrawAccounts {
 }
 
 /// PumpSwap Withdraw instruction parameters.
-#[derive(Debug, Clone, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = WITHDRAW_DISCRIMINATOR)]
 pub struct WithdrawParams {
     /// LP tokens to burn.

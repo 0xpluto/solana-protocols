@@ -7,12 +7,27 @@ use solana_program::pubkey::Pubkey;
 
 use super::InstructionParseError;
 
-/// Trait for types that can be parsed from instruction data bytes.
+/// An instruction's arguments, decoded from the bytes after its discriminator.
 ///
-/// Implement this for instruction parameter structs.
-/// The `#[derive(InstructionData)]` macro generates this automatically.
-pub trait FromInstructionData: Sized {
+/// # borsh is required, by construction
+///
+/// The supertrait bound is the point: Solana programs serialize their arguments
+/// with borsh, so anything that decodes them by another route is a second
+/// implementation of the producer's codec — the same defect class as a
+/// transcribed discriminator, and one that drifts silently. A params type
+/// without `BorshDeserialize` now fails to compile rather than quietly getting
+/// a hand-rolled offset walk.
+///
+/// The one encoding borsh cannot express is
+/// [`OptionBool`](crate::protocols::OptionBool), whose width is "whatever is
+/// left". It carries a hand-written impl so that every struct *containing* it is
+/// still derived — the exception is one primitive deep, not one per protocol.
+pub trait FromInstructionData: borsh::BorshDeserialize + borsh::BorshSerialize + Sized {
     /// Parse from instruction data bytes (after discriminator).
+    ///
+    /// # Errors
+    ///
+    /// The bytes are not a valid encoding of this type.
     fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError>;
 }
 
@@ -139,7 +154,18 @@ mod tests {
 /// zero-argument instruction mean the program grew an argument we have not
 /// noticed, which is exactly the change that should announce itself rather than
 /// being skipped over.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+)]
 pub struct NoParams;
 
 impl NoParams {

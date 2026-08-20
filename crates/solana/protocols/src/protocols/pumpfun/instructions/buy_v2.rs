@@ -23,7 +23,18 @@ use solana_protocols_macros::InstructionData;
 use super::super::constants::BUY_V2_DISCRIMINATOR;
 
 /// Arguments for `buy_v2`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = BUY_V2_DISCRIMINATOR)]
 pub struct BuyV2Params {
     /// Tokens to receive — the pinned side.

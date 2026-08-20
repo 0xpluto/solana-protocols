@@ -13,7 +13,18 @@ use super::super::constants::BUY_EXACT_SOL_IN_DISCRIMINATOR;
 use crate::protocols::OptionBool;
 
 /// Arguments for `buy_exact_sol_in`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = BUY_EXACT_SOL_IN_DISCRIMINATOR)]
 pub struct BuyExactSolInParams {
     /// SOL the trader spends — the pinned side.

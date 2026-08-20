@@ -24,7 +24,18 @@ use super::super::constants::BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR;
 use crate::protocols::OptionBool;
 
 /// Arguments for `buy_exact_quote_in_v2`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR)]
 pub struct BuyExactQuoteInV2Params {
     /// Quote the trader spends — the pinned side.

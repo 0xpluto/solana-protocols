@@ -124,7 +124,15 @@ impl BuyAccounts {
 }
 
 /// Parameters for a buy instruction.
-#[derive(Debug, Clone, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = BUY_DISCRIMINATOR)]
 pub struct BuyParams {
     /// Amount of tokens to receive.

@@ -78,7 +78,7 @@ pub struct SwapAccounts {
 }
 
 /// BuyExactIn instruction parameters.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = BUY_EXACT_IN_DISCRIMINATOR)]
 pub struct BuyExactInParams {
     /// Quote tokens to spend (exact input).
@@ -102,7 +102,7 @@ impl BuyExactInParams {
 }
 
 /// BuyExactOut instruction parameters.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = BUY_EXACT_OUT_DISCRIMINATOR)]
 pub struct BuyExactOutParams {
     /// Base tokens to receive (exact output).
@@ -126,7 +126,7 @@ impl BuyExactOutParams {
 }
 
 /// SellExactIn instruction parameters.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SELL_EXACT_IN_DISCRIMINATOR)]
 pub struct SellExactInParams {
     /// Base tokens to sell (exact input).
@@ -150,7 +150,7 @@ impl SellExactInParams {
 }
 
 /// SellExactOut instruction parameters.
-#[derive(Debug, Clone, InstructionData)]
+#[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
 #[instruction_data(discriminator = SELL_EXACT_OUT_DISCRIMINATOR)]
 pub struct SellExactOutParams {
     /// Quote tokens to receive (exact output).

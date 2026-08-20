@@ -21,7 +21,18 @@
 /// instructions with different events cannot share one. That is the same reason
 /// each discriminator has its own file: shared types answer one question for
 /// instructions that do not agree.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+)]
 pub struct DistributeCreatorFeesParams;
 
 impl DistributeCreatorFeesParams {

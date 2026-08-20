@@ -77,7 +77,15 @@ pub struct CreatePoolAccounts {
 }
 
 /// PumpSwap CreatePool instruction parameters.
-#[derive(Debug, Clone, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = CREATE_POOL_DISCRIMINATOR)]
 pub struct CreatePoolParams {
     /// Pool index (used for PDA derivation).

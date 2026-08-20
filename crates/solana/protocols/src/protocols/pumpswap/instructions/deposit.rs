@@ -77,7 +77,15 @@ pub struct DepositAccounts {
 }
 
 /// PumpSwap Deposit instruction parameters.
-#[derive(Debug, Clone, Serialize, Deserialize, InstructionData)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
 #[instruction_data(discriminator = DEPOSIT_DISCRIMINATOR)]
 pub struct DepositParams {
     /// LP tokens to mint (desired output).

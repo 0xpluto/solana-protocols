@@ -65,7 +65,7 @@ pub struct CreateAccounts {
 /// Parameters for a create instruction.
 ///
 /// Contains the token metadata (name, symbol, uri).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, borsh::BorshSerialize)]
 pub struct CreateParams {
     /// Token name.
     pub name: String,
