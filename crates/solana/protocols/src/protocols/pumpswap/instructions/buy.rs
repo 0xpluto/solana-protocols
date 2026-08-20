@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
+
+use crate::parsing::accounts::Conditional;
 use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 use solana_sdk::instruction::Instruction;
 
@@ -23,7 +25,16 @@ use crate::traits::InstructionBuilder;
 /// `OnchainInstruction` adds a golden round-trip test against a real buy.
 #[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
 #[idl(program = "pump_amm", instruction = "buy")]
-#[onchain_ix(fixture = "pumpswap/ix_buy.json")]
+#[onchain_ix(fixtures(
+    "pumpswap/ix_buy.json",
+    "pumpswap/ix_buy_n25.json",
+    "pumpswap/ix_buy_n26.json",
+    "pumpswap/ix_buy_n27.json",
+    "pumpswap/ix_buy_exact_quote_in_n25.json",
+    "pumpswap/ix_buy_exact_quote_in_n26.json",
+    "pumpswap/ix_buy_exact_quote_in_n27.json",
+    "pumpswap/ix_buy_exact_quote_in_n30.json"
+))]
 pub struct BuyAccounts {
     /// Pool state account.
     #[account(writable)]
@@ -94,12 +105,37 @@ pub struct BuyAccounts {
     /// Fee program.
     #[account]
     pub fee_program: Pubkey,
+
+    /// The quote-token account of the cashback volume accumulator.
+    ///
+    /// `ATA(user_volume_accumulator, quote_mint)`. Pump's cashback docs name it
+    /// as the 0th appended account on a PumpSwap buy, and mainnet agrees: it is
+    /// the first tail entry on the 27-account buys.
+    #[account(resolved = spl_associated_token_account::get_associated_token_address(
+        &user_volume_accumulator,
+        &quote_mint,
+    ))]
+    pub appended_quote_volume_accumulator: Conditional,
+    /// Fee destinations from the `pump_fees` global roster.
+    #[account(
+        remaining,
+        reason = "the pump_fees BuybackVault roster: eight exist on chain and a \
+                  caller credits any subset, so which ones appear is caller policy \
+                  rather than layout, and none is derivable from this instruction"
+    )]
+    pub buyback_vaults: Vec<Pubkey>,
+
 }
 
 impl BuyAccounts {
     /// Create buy accounts from pool keys and user wallet.
     #[must_use]
     pub fn from_keys(keys: &PumpSwapKeys, user: &Pubkey) -> Self {
+        let uva = solana_program::pubkey::Pubkey::find_program_address(
+            &[b"user_volume_accumulator", user.as_ref()],
+            &super::super::constants::PROGRAM_ID,
+        )
+        .0;
         BuyAccounts {
             pool: keys.pool,
             user: *user,
@@ -124,6 +160,17 @@ impl BuyAccounts {
             user_volume_accumulator: keys.user_volume_accumulator(user),
             fee_config: FEE_CONFIG,
             fee_program: FEE_PROGRAM,
+            // Appended: the cashback accumulator's quote account and any
+            // buyback vaults. A builder emits what it can derive; which vaults
+            // to credit is the caller's choice, so none by default.
+            appended_quote_volume_accumulator:
+                crate::parsing::accounts::Conditional::Present(
+                    spl_associated_token_account::get_associated_token_address(
+                        &uva,
+                        &keys.quote_mint,
+                    ),
+                ),
+            buyback_vaults: Vec::new(),
         }
     }
 }
@@ -140,7 +187,12 @@ impl BuyAccounts {
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = BUY_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_DISCRIMINATOR, fixtures(
+    "pumpswap/ix_buy.json",
+    "pumpswap/ix_buy_n25.json",
+    "pumpswap/ix_buy_n26.json",
+    "pumpswap/ix_buy_n27.json"
+), idl(program = "pump_amm", instruction = "buy"))]
 pub struct BuyParams {
     /// Minimum base tokens to receive.
     pub base_amount_out: u64,
@@ -166,7 +218,12 @@ pub struct BuyParams {
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = BUY_EXACT_QUOTE_IN_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_EXACT_QUOTE_IN_DISCRIMINATOR, fixtures(
+    "pumpswap/ix_buy_exact_quote_in_n25.json",
+    "pumpswap/ix_buy_exact_quote_in_n26.json",
+    "pumpswap/ix_buy_exact_quote_in_n27.json",
+    "pumpswap/ix_buy_exact_quote_in_n30.json"
+))]
 pub struct BuyExactQuoteInParams {
     /// Quote (SOL) the trader is willing to spend — the pinned side.
     pub spendable_quote_in: u64,
@@ -353,7 +410,8 @@ mod tests {
         let ix = BuyBuilder::build(&keys, &user, 1_000_000, 500_000_000);
 
         assert_eq!(ix.program_id, PROGRAM_ID);
-        assert_eq!(ix.accounts.len(), 23);
+        // 23 declared + the appended bonding-curve-era accounts the builder emits.
+        assert_eq!(ix.accounts.len(), BuyAccounts::ACCOUNT_COUNT + 1);
         assert!(!ix.data.is_empty());
 
         // Verify user is a signer

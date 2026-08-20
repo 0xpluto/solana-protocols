@@ -15,11 +15,12 @@
 //! 4. Use the returned [`PumpfunFees`] in swap math.
 
 use borsh::BorshDeserialize;
+use solana_protocols_macros::OnchainState;
 use solana_program::pubkey::Pubkey;
 
 /// Fee rates for a given tier (basis points out of
 /// [`FEE_DENOMINATOR`](super::constants::FEE_DENOMINATOR) = 10000).
-#[derive(BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct PumpfunFees {
     pub lp_fee_bps: u64,
     pub protocol_fee_bps: u64,
@@ -29,14 +30,24 @@ pub struct PumpfunFees {
 /// A fee tier — applies when the bonding curve's market cap is
 /// `>= market_cap_lamports_threshold`. Tiers are stored sorted
 /// ascending by threshold.
-#[derive(BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshDeserialize, Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct PumpfunFeeTier {
     pub market_cap_lamports_threshold: u128,
     pub fees: PumpfunFees,
 }
 
 /// On-chain `FeeConfig` account owned by the `pump_fees` program.
-#[derive(BorshDeserialize, Clone, Debug)]
+///
+/// The discriminator is checked here even though it does not disambiguate the
+/// account on its own — pumpfun's and pumpswap's `FeeConfig` PDAs share an owner
+/// *and* a discriminator, which is why the registry routes this one by PDA. It
+/// still rules out a foreign account arriving on this path, and identity checks
+/// belong inside the decode: `from_account_data` is public, and "the registry
+/// validated upstream" has already been false once.
+#[derive(BorshDeserialize, Clone, Debug, serde::Serialize, OnchainState)]
+#[idl(program = "pump_fees", account = "FeeConfig")]
+#[state(discriminator = super::constants::FEE_CONFIG_DISCRIMINATOR)]
+#[state(fixtures("pump_fees/fee_config.json"))]
 pub struct PumpfunFeeConfig {
     pub bump: u8,
     pub admin: Pubkey,
@@ -46,23 +57,18 @@ pub struct PumpfunFeeConfig {
 
 impl PumpfunFeeConfig {
     /// Parse from raw account data (8-byte Anchor discriminator prefix
-    /// included). Returns `None` on malformed / too-short input.
-    pub fn from_account_data(data: &[u8]) -> Option<Self> {
-        const DISC_LEN: usize = 8;
-        if data.len() < DISC_LEN {
-            return None;
-        }
-        match BorshDeserialize::deserialize(&mut &data[DISC_LEN..]) {
-            Ok(config) => Some(config),
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    len = data.len(),
-                    "PumpfunFeeConfig: borsh deserialization failed"
-                );
-                None
-            }
-        }
+    /// included).
+    ///
+    /// # Errors
+    ///
+    /// The discriminator does not match, or the body does not decode. This used
+    /// to return `Option` and log the reason at `warn!`, which the default
+    /// `solana_protocols=error` filter made unreachable — a decode failure on
+    /// the account that prices every pumpfun swap was invisible by construction.
+    pub fn from_account_data(
+        data: &[u8],
+    ) -> ::core::result::Result<Self, crate::parsing::state::AccountParseError> {
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data)
     }
 }
 
@@ -224,7 +230,9 @@ mod tests {
                 },
                 fee_tiers: vec![tier(1_000_000, 100, 50), tier(10_000_000, 80, 30)],
             };
-            let mut out = vec![0u8; 8]; // disc prefix
+            // The real discriminator: `from_account_data` checks it now, so a
+            // synthetic account built with a zero prefix is correctly refused.
+            let mut out = super::super::constants::FEE_CONFIG_DISCRIMINATOR.to_vec();
             out.extend(borsh::to_vec(&cfg).unwrap());
             out
         };
@@ -237,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn from_account_data_returns_none_on_short_input() {
-        assert!(PumpfunFeeConfig::from_account_data(&[0u8; 4]).is_none());
+    fn from_account_data_refuses_short_input() {
+        assert!(PumpfunFeeConfig::from_account_data(&[0u8; 4]).is_err());
     }
 }

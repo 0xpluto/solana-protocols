@@ -17,6 +17,7 @@ use solana_protocols_macros::AccountMetas;
 /// [`FromAccountKeys`](crate::parsing::FromAccountKeys) impl the
 /// extractor uses.
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapAccounts {
     /// 0. Pool authority PDA (seed: `b"pool_authority"`).
     #[account]

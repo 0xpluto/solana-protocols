@@ -31,19 +31,7 @@ use super::fee_config::PumpfunFeeConfig;
 use super::global::PumpfunFeeRecipients;
 use super::state::BondingCurve;
 
-/// Adapt the `Option`-returning Global decoder to the `Result` the derive's
-/// generated `deserialize` expects. The reason string becomes the
-/// `HandlerError::Deserialize` message.
-fn decode_fee_recipients(data: &[u8]) -> Result<PumpfunFeeRecipients, &'static str> {
-    PumpfunFeeRecipients::from_account_data(data)
-        .ok_or("PumpfunGlobal: parse_fee_recipients failed")
-}
 
-/// Adapt the `Option`-returning FeeConfig decoder to `Result`.
-fn decode_fee_config(data: &[u8]) -> Result<PumpfunFeeConfig, &'static str> {
-    PumpfunFeeConfig::from_account_data(data)
-        .ok_or("PumpfunFeeConfig: borsh deserialization failed")
-}
 
 // =====================================================================
 // Bonding curve
@@ -102,7 +90,7 @@ where
     program = PROGRAM_ID,
     state = PumpfunFeeRecipients,
     discriminator_const = GLOBAL_DISCRIMINATOR,
-    decode = decode_fee_recipients,
+    decode = PumpfunFeeRecipients::from_account_data,
     fixture = "pumpfun/global.json"
 )]
 pub struct PumpfunGlobalHandler;
@@ -155,7 +143,7 @@ where
     program = PUMP_FEES_PROGRAM_ID,
     state = PumpfunFeeConfig,
     discriminator_const = FEE_CONFIG_DISCRIMINATOR,
-    decode = decode_fee_config,
+    decode = PumpfunFeeConfig::from_account_data,
     fixture = "pump_fees/fee_config.json"
 )]
 pub struct PumpfunFeeConfigHandler;

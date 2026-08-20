@@ -9,10 +9,14 @@
 //!
 //! # Accounts
 //!
-//! Deliberately no account struct. The IDL declares 5; mainnet has been
-//! observed sending more, the same drift the v2 swap instructions show. A
-//! fixed-slot struct would decode the wrong pubkeys the moment the program adds
-//! one, and the event names its own participants anyway.
+//! This block used to read "deliberately no account struct: the IDL declares
+//! 5; mainnet has been observed sending more". The capture says otherwise —
+//! real instructions carry exactly 5. The claim was never
+//! measured, and it cost the account layout entirely: no struct meant no
+//! fixture, no IDL name check, and no way for any of it to be wrong out loud.
+//!
+//! The layout is now modelled and pinned to a real landed instruction. If the
+//! program does add a slot, `UnmodelledAccounts` refuses it and says so.
 
 /// Arguments: none.
 ///
@@ -21,6 +25,8 @@
 /// instructions with different events cannot share one. That is the same reason
 /// each discriminator has its own file: shared types answer one question for
 /// instructions that do not agree.
+use solana_program::pubkey::Pubkey;
+use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 #[derive(
     Debug,
     Clone,
@@ -32,30 +38,14 @@
     serde::Deserialize,
     borsh::BorshDeserialize,
     borsh::BorshSerialize,
+    InstructionData,
 )]
+#[instruction_data(discriminator = super::super::constants::COLLECT_CREATOR_FEE_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_collect_creator_fee_n5.json"
+), idl(program = "pump", instruction = "collect_creator_fee"))]
 pub struct CollectCreatorFeeParams;
 
-impl CollectCreatorFeeParams {
-    /// Argument encoding: empty. The discriminator is the whole instruction.
-    #[must_use]
-    pub fn to_data(self) -> Vec<u8> {
-        Vec::new()
-    }
-}
 
-impl crate::parsing::FromInstructionData for CollectCreatorFeeParams {
-    fn from_instruction_data(data: &[u8]) -> Result<Self, crate::parsing::InstructionParseError> {
-        if data.is_empty() {
-            return Ok(Self);
-        }
-        Err(
-            crate::parsing::InstructionParseError::DeserializationFailed(format!(
-                "CollectCreatorFeeParams takes no arguments, got {} bytes",
-                data.len()
-            )),
-        )
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -69,4 +59,37 @@ mod tests {
         assert!(CollectCreatorFeeParams::from_instruction_data(&[]).is_ok());
         assert!(CollectCreatorFeeParams::from_instruction_data(&[0]).is_err());
     }
+}
+
+/// Accounts for `collect_creator_fee` — 5 slots from the IDL.
+///
+/// This layout is a **hypothesis**. The file previously declared no accounts
+/// struct at all, on the reasoning that mainnet sends more slots than the IDL
+/// declares and a fixed-slot struct would decode the wrong pubkeys. The capture
+/// says otherwise: this instruction arrives at exactly the declared count.
+///
+/// Modelled anyway, because not modelling it records nothing: the creator-fee
+/// accounts are functionality thrown away, and a struct that is wrong fails its
+/// golden fixture and says so, while an absent struct fails nothing and teaches
+/// nobody. If the program sends a slot we do not expect, `UnmodelledAccounts`
+/// refuses it — deliberately, since there is no `remaining` field here to absorb a surprise.
+#[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
+#[idl(program = "pump", instruction = "collect_creator_fee")]
+#[onchain_ix(fixtures("pumpfun/ix_collect_creator_fee_n5.json"))]
+pub struct CollectCreatorFeeAccounts {
+    /// IDL slot 0.
+    #[account(writable)]
+    pub creator: Pubkey,
+    /// IDL slot 1.
+    #[account(writable)]
+    pub creator_vault: Pubkey,
+    /// IDL slot 2.
+    #[account]
+    pub system_program: Pubkey,
+    /// IDL slot 3.
+    #[account]
+    pub event_authority: Pubkey,
+    /// IDL slot 4.
+    #[account]
+    pub program: Pubkey,
 }

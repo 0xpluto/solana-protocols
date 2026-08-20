@@ -8,6 +8,8 @@
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
+
+use crate::parsing::accounts::Conditional;
 use solana_protocols_macros::{AccountMetas, BuildAccounts, InstructionData, OnchainInstruction};
 use solana_sdk::instruction::Instruction;
 
@@ -19,6 +21,7 @@ use super::super::constants::{
     BONDING_CURVE_SEED, BUY_DISCRIMINATOR, EVENT_AUTHORITY_PDA, FEE_COLLECTOR, FEE_CONFIG_PDA,
     GLOBAL_PDA, GLOBAL_VOLUME_ACCUMULATOR_PDA, PROGRAM_ID, PUMP_FEES_PROGRAM_ID,
     USER_VOLUME_ACCUMULATOR_SEED,
+    BONDING_CURVE_V2_SEED,
 };
 
 /// Account list for pump.fun buy instruction.
@@ -33,7 +36,13 @@ use super::super::constants::{
 #[derive(Debug, Clone, AccountMetas, BuildAccounts, OnchainInstruction)]
 #[idl(program = "pump", instruction = "buy")]
 #[build(fixture = "pumpfun/ix_buy.json")]
-#[onchain_ix(fixture = "pumpfun/ix_buy.json")]
+#[onchain_ix(fixtures(
+    "pumpfun/ix_buy.json",
+    "pumpfun/ix_buy_n18.json",
+    "pumpfun/ix_buy_n19.json",
+    "pumpfun/ix_buy_exact_sol_in_n18.json",
+    "pumpfun/ix_buy_exact_sol_in_n19.json"
+))]
 pub struct BuyAccounts {
     /// Global state PDA.
     #[account]
@@ -103,6 +112,32 @@ pub struct BuyAccounts {
     #[account]
     #[build(key = PUMP_FEES_PROGRAM_ID)]
     pub fee_program: Pubkey,
+
+    /// The cashback volume accumulator, when the coin has cashback enabled.
+    ///
+    /// `PDA(pumpfun, ["user_volume_accumulator", user])`. Pump's cashback docs
+    /// name it as the 0th appended account on `sell`, and mainnet agrees — it is
+    /// present on the 17/18/19-account sells and absent below.
+    #[account(resolved = super::super::accounts::derive_user_volume_accumulator_pda(&user))]
+    #[build(optional, pda(program = PROGRAM_ID, seeds(USER_VOLUME_ACCUMULATOR_SEED, user)))]
+    pub appended_user_volume_accumulator: Conditional,
+    /// The v2 bonding curve, appended to every buy and sell.
+    ///
+    /// `PDA(pumpfun, ["bonding-curve-v2", mint])`. Located by derivation, not by
+    /// index: it sits at tail 0 when no accumulator precedes it and tail 1 when
+    /// one does.
+    #[account(resolved = super::super::accounts::derive_bonding_curve_v2_pda(&mint))]
+    #[build(pda(program = PROGRAM_ID, seeds(BONDING_CURVE_V2_SEED, mint)))]
+    pub bonding_curve_v2: Conditional,
+    /// Fee destinations from the `pump_fees` global roster.
+    #[account(
+        remaining,
+        reason = "the pump_fees BuybackVault roster: eight exist on chain and a \
+                  caller credits any subset, so which ones appear is caller policy \
+                  rather than layout, and none is derivable from this instruction"
+    )]
+    pub buyback_vaults: Vec<Pubkey>,
+
 }
 
 impl BuyAccounts {
@@ -133,7 +168,11 @@ impl BuyAccounts {
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = BUY_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_buy.json",
+    "pumpfun/ix_buy_n18.json",
+    "pumpfun/ix_buy_n19.json"
+), idl(program = "pump", instruction = "buy"))]
 pub struct BuyParams {
     /// Amount of tokens to receive.
     pub amount: u64,

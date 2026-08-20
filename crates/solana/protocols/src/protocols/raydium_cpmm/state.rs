@@ -34,7 +34,8 @@ pub enum PoolStatusBitIndex {
 /// Reserves are NOT stored in the pool account — they live in vault token
 /// accounts (token_0_vault, token_1_vault). Use `spot_price_with_vaults()`
 /// when vault balances are available.
-#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[state(unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK")]
 #[state(discriminator = CPMM_POOL_STATE_DISCRIMINATOR)]
 #[state(fixtures("raydium_cpmm/pool_account.json"))]
 pub struct CpmmPoolState {
@@ -107,17 +108,7 @@ impl CpmmPoolState {
     ///
     /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
-            |e| match e {
-                crate::parsing::state::AccountParseError::TooShort { len, need } => {
-                    Error::AccountDataTooShort {
-                        expected: need,
-                        actual: len,
-                    }
-                }
-                other => Error::invalid_account_data(other.to_string()),
-            },
-        )
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(Into::into)
     }
 
     /// Check if swap operations are enabled (status bit 2 not set).

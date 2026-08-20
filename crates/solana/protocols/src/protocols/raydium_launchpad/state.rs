@@ -13,7 +13,7 @@ use solana_protocols_macros::OnchainState;
 use super::constants::LAUNCHPAD_POOL_STATE_DISCRIMINATOR;
 use solana_program::pubkey::Pubkey;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// Minimum account data size (8 disc + ~421 data).
 pub const LAUNCHPAD_POOL_ACCOUNT_MIN_SIZE: usize = 429;
@@ -43,7 +43,8 @@ impl PoolStatus {
 }
 
 /// Vesting schedule for token unlocks.
-#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[state(unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK")]
 #[state(no_discriminator)]
 pub struct VestingSchedule {
     /// Total locked token amount.
@@ -65,7 +66,8 @@ pub struct VestingSchedule {
 /// how reserves map to price.
 ///
 /// NOTE: Trailing 62-byte padding omitted — bincode ignores extra bytes.
-#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[state(unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK")]
 #[state(discriminator = LAUNCHPAD_POOL_STATE_DISCRIMINATOR)]
 #[state(fixtures("raydium_launchpad/pool_account.json"))]
 pub struct LaunchpadPoolState {
@@ -136,17 +138,7 @@ impl LaunchpadPoolState {
     ///
     /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
-            |e| match e {
-                crate::parsing::state::AccountParseError::TooShort { len, need } => {
-                    Error::AccountDataTooShort {
-                        expected: need,
-                        actual: len,
-                    }
-                }
-                other => Error::invalid_account_data(other.to_string()),
-            },
-        )
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(Into::into)
     }
 
     /// Get the parsed pool status.

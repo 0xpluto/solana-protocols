@@ -47,6 +47,22 @@ struct FieldSpec {
     ident: syn::Ident,
     index: usize,
     derivation: Derivation,
+    /// How the struct stores it. Appended accounts are `Conditional`, so the
+    /// derived pubkey is wrapped rather than assigned bare.
+    wrapper: Wrapper,
+}
+
+/// The field's storage shape.
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Wrapper {
+    /// `Conditional`, and not appended by a builder unless the caller asks.
+    ConditionalOptional,
+    /// `Pubkey` — assign directly.
+    Bare,
+    /// `Conditional` — a builder always emits what it derives, so `Present`.
+    Conditional,
+    /// `Vec<Pubkey>` — nothing to derive; a builder supplies these or does not.
+    List,
 }
 
 pub fn derive(input: TokenStream) -> TokenStream {
@@ -88,8 +104,26 @@ pub fn derive(input: TokenStream) -> TokenStream {
         .collect();
 
     let mut specs: Vec<FieldSpec> = Vec::new();
+    // `remaining` lists have nothing to derive, but they are still fields of the
+    // struct being built, so they have to reach the literal.
+    let mut list_fields: Vec<syn::Ident> = Vec::new();
     for (index, field) in fields.iter().enumerate() {
         let ident = field.ident.clone().unwrap();
+        let ty = quote::ToTokens::to_token_stream(&field.ty).to_string().replace(' ', "");
+        let wrapper = if ty.ends_with("Conditional") {
+            Wrapper::Conditional
+        } else if ty.starts_with("Vec<") {
+            Wrapper::List
+        } else {
+            Wrapper::Bare
+        };
+        // A `remaining` list has nothing to derive: which accounts appear is the
+        // caller's choice, not a function of this instruction.
+        if wrapper == Wrapper::List {
+            list_fields.push(ident);
+            continue;
+        }
+        let mut optional = false;
         let build_attr = field.attrs.iter().find(|a| a.path().is_ident("build"));
         let Some(attr) = build_attr else {
             return syn::Error::new_spanned(
@@ -122,6 +156,8 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 let program =
                     program.ok_or_else(|| m.error("pda(...) requires `program = EXPR`"))?;
                 derivation = Some(Derivation::Pda { program, seeds });
+            } else if m.path.is_ident("optional") {
+                optional = true;
             } else if m.path.is_ident("ata") {
                 let mut owner: Option<Path> = None;
                 let mut mint: Option<Path> = None;
@@ -157,6 +193,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
         specs.push(FieldSpec {
             ident,
             index,
+            wrapper: if optional && wrapper == Wrapper::Conditional {
+                Wrapper::ConditionalOptional
+            } else {
+                wrapper
+            },
             derivation,
         });
     }
@@ -217,7 +258,35 @@ pub fn derive(input: TokenStream) -> TokenStream {
         })
         .collect();
 
-    let field_names: Vec<_> = specs.iter().map(|s| &s.ident).collect();
+    // Wrap where the field is `Conditional`: a builder emits what it derives, so
+    // the derived pubkey is always `Present`. `remaining` lists are skipped
+    // entirely and default, because which of them appear is caller policy.
+    let field_names: Vec<_> = specs
+        .iter()
+        .map(|s| {
+            let id = &s.ident;
+            match s.wrapper {
+                Wrapper::Bare => quote! { #id },
+                Wrapper::Conditional => quote! {
+                    #id: ::solana_protocols::parsing::accounts::Conditional::Present(#id)
+                },
+                // Derivable, but appending it changes what the program does —
+                // a cashback accumulator on a coin without cashback is an
+                // account the program did not ask for. The caller opts in.
+                Wrapper::ConditionalOptional => quote! {
+                    #id: {
+                        // The derivation still runs, so a wrong seed set is a
+                        // compile error rather than dead annotation, but the
+                        // builder does not append the account.
+                        let _ = #id;
+                        ::solana_protocols::parsing::accounts::Conditional::Absent
+                    }
+                },
+                Wrapper::List => quote! { #id: ::std::vec::Vec::new() },
+            }
+        })
+        .chain(list_fields.iter().map(|id| quote! { #id: ::std::vec::Vec::new() }))
+        .collect();
 
     // Optional replay test: rebuild the real instruction from its own inputs.
     let replay = fixture.map(|fixture| {
@@ -242,9 +311,18 @@ pub fn derive(input: TokenStream) -> TokenStream {
                     let built = #name::derive(#(#input_args),*);
                     let built_keys: ::std::vec::Vec<_> =
                         built.to_account_metas().into_iter().map(|m| m.pubkey).collect();
+                    // Compare the DECLARED slots only. What follows them is
+                    // appended, and appended accounts are caller policy and
+                    // era-dependent: which buyback vaults get credited is the
+                    // sender's choice, and `ix_buy.json` was captured before
+                    // `bonding_curve_v2` existed at all. Demanding that a builder
+                    // reproduce a past caller's tail asserts something no builder
+                    // can know. The tail is checked where it can be — by
+                    // `from_pubkeys` against every observed length.
+                    let n = #name::ACCOUNT_COUNT.min(built_keys.len()).min(real.len());
                     assert_eq!(
-                        built_keys.as_slice(),
-                        &real[..built_keys.len()],
+                        &built_keys[..n],
+                        &real[..n],
                         "built accounts must match the real instruction {}",
                         fx.signature,
                     );

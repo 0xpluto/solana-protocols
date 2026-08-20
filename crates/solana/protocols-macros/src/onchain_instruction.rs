@@ -11,9 +11,17 @@
 //!
 //! ```ignore
 //! #[derive(AccountMetas, OnchainInstruction)]
-//! #[onchain_ix(fixture = "pumpswap/ix_buy.json")]
+//! #[onchain_ix(fixtures("pumpswap/ix_buy_n25.json", "pumpswap/ix_buy_n26.json"))]
 //! pub struct BuyAccounts { #[account(writable)] pub pool: Pubkey, /* … */ }
 //! ```
+//!
+//! # One fixture per observed account count
+//!
+//! A single fixture pins one length, and length is the axis these layouts get
+//! wrong: pumpswap's `sell` arrives at 23, 24 and 26 accounts, pumpfun's `sell`
+//! at 16 through 19. Pinning only one of them is how a struct that is right for
+//! the common case and wrong for the rest stays green — the same shape as
+//! `POOL_ACCOUNT_SIZE = 301` rejecting most live pools.
 
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
@@ -23,51 +31,41 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let ident = input.ident.clone();
 
-    let mut fixture: Option<LitStr> = None;
+    let mut fixtures: Vec<LitStr> = Vec::new();
     for attr in &input.attrs {
         if !attr.path().is_ident("onchain_ix") {
             continue;
         }
         let parsed = attr.parse_nested_meta(|meta| {
-            if meta.path.is_ident("fixture") {
-                fixture = Some(meta.value()?.parse()?);
+            if crate::fixture_walk::parse_fixture_meta(&meta, &mut fixtures)? {
                 Ok(())
             } else {
-                Err(meta.error("unknown `onchain_ix` key"))
+                Err(meta.error("unknown `onchain_ix` key: expected fixture = … or fixtures(…)"))
             }
         });
         if let Err(e) = parsed {
             return e.to_compile_error().into();
         }
     }
-    let fixture = match fixture {
-        Some(f) => f,
-        None => {
-            return syn::Error::new_spanned(
-                &ident,
-                "#[derive(OnchainInstruction)] requires `#[onchain_ix(fixture = \"…\")]`",
-            )
-            .to_compile_error()
-            .into()
-        }
-    };
+    if fixtures.is_empty() {
+        return syn::Error::new_spanned(
+            &ident,
+            "#[derive(OnchainInstruction)] requires #[onchain_ix(fixtures(\"…\", …))] — \
+             one real landed instruction per account count observed on chain, because \
+             account count is the axis these layouts get wrong",
+        )
+        .to_compile_error()
+        .into();
+    }
+    // `VerifiedInstruction::FIXTURE` names one; the test walks them all.
+    let first = fixtures[0].clone();
 
     let test_mod = format_ident!("__onchain_ix_fixture_{}", ident.to_string().to_lowercase());
-
-    quote! {
-        impl crate::parsing::VerifiedInstruction for #ident {
-            const FIXTURE: &'static str = #fixture;
-        }
-
-        #[cfg(test)]
-        mod #test_mod {
-            use super::*;
-
-            /// An instruction accounts-struct cannot ship without a golden
-            /// fixture whose account order + flags its `from_pubkeys` reproduces.
-            #[test]
-            fn onchain_instruction_fixture_roundtrips() {
-                let fx = crate::test_fixtures::InstructionFixture::load(#fixture);
+    let walk = crate::fixture_walk::walk(
+        &ident,
+        &fixtures,
+        quote! { 
+                let fx = crate::test_fixtures::InstructionFixture::load(__fixture);
                 assert!(
                     fx.data().len() >= 8,
                     "instruction {} carries no discriminator",
@@ -129,6 +127,23 @@ pub fn derive(input: TokenStream) -> TokenStream {
                         );
                     }
                 }
+                 },
+    );
+
+    quote! {
+        impl crate::parsing::VerifiedInstruction for #ident {
+            const FIXTURE: &'static str = #first;
+        }
+
+        #[cfg(test)]
+        mod #test_mod {
+            use super::*;
+
+            /// An instruction accounts-struct cannot ship without a golden
+            /// fixture whose account order + flags its `from_pubkeys` reproduces.
+            #[test]
+            fn onchain_instruction_fixture_roundtrips() {
+                #walk
             }
         }
     }

@@ -18,6 +18,7 @@ use super::super::constants::WITHDRAW_IX;
 /// \[14\]=user_coin, \[15\]=user_pc, \[16\]=user, \[17\]=market_event_queue,
 /// \[18\]=market_bids, \[19\]=market_asks
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct WithdrawAccounts {
     /// SPL Token program.
     #[account]
@@ -60,7 +61,7 @@ pub struct WithdrawAccounts {
     pub vault_signer: Pubkey,
     /// User LP token account (LP tokens burned from here).
     #[account(writable)]
-    pub user_lp_token_account: Pubkey,
+    pub user_pool_token_account: Pubkey,
     /// User coin token account (receives coin).
     #[account(writable)]
     pub user_coin_token_account: Pubkey,
@@ -86,7 +87,7 @@ pub struct WithdrawAccounts {
 /// Uses 1-byte instruction index (0x04).
 /// Actual withdrawn amounts come from CPI transfers, not these params.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = [WITHDRAW_IX], discriminator_size = 1)]
+#[instruction_data(discriminator = [WITHDRAW_IX], discriminator_size = 1, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct WithdrawParams {
     /// LP token amount to burn (withdraw).
     pub amount: u64,

@@ -70,7 +70,7 @@ fn discriminator(item: &serde_json::Value, prefix: &str, name: &str) -> [u8; 8] 
 /// Types are sized from the IDL rather than assumed. An unknown type yields
 /// `None` and the instruction is skipped rather than probed with a guess,
 /// because a guessed body that happens to parse would inflate the number.
-fn arg_bytes(item: &serde_json::Value) -> Vec<u8> {
+fn arg_bytes(item: &serde_json::Value, idl: &serde_json::Value) -> Vec<u8> {
     let mut out = Vec::new();
     let empty = vec![];
     for a in item
@@ -78,7 +78,21 @@ fn arg_bytes(item: &serde_json::Value) -> Vec<u8> {
         .and_then(|v| v.as_array())
         .unwrap_or(&empty)
     {
-        match a.get("type") {
+        push_type(a.get("type"), idl, &mut out);
+    }
+    out
+}
+
+/// Append a well-formed zero value for one type.
+///
+/// Split out so a `defined` type can recurse into the IDL's own `types` section
+/// rather than being papered over with filler. Filler was actively misleading
+/// once decoding became strict: 64 bytes thrown at a two-field struct made a
+/// *correct* decoder look broken, which is how `meteora_dbc` appeared to
+/// regress to zero when nothing about it had changed.
+fn push_type(ty: Option<&serde_json::Value>, idl: &serde_json::Value, out: &mut Vec<u8>) {
+    {
+        match ty {
             Some(serde_json::Value::String(t)) => match t.as_str() {
                 "u8" | "i8" | "bool" => out.push(0),
                 "u16" | "i16" => out.extend_from_slice(&[0; 2]),
@@ -90,24 +104,41 @@ fn arg_bytes(item: &serde_json::Value) -> Vec<u8> {
                 "string" | "bytes" => out.extend_from_slice(&[0; 4]),
                 _ => out.extend_from_slice(&[0; 8]),
             },
-            // A defined type. `OptionBool` is legitimately absent — that is one
-            // of its observed wire forms — so it contributes no bytes. Anything
-            // else gets a generous filler, which is why a defined-arg
-            // instruction failing here is inconclusive rather than damning.
+            // A defined type: resolve it against the IDL and lay out its
+            // fields, so the probe is the body the program would actually
+            // accept. `OptionBool` is the one exception — absent is one of its
+            // observed wire forms, so it contributes nothing.
             Some(serde_json::Value::Object(o)) => {
                 let named = o
                     .get("defined")
                     .and_then(|d| d.get("name"))
                     .and_then(|n| n.as_str())
                     .unwrap_or("");
-                if named != "OptionBool" {
-                    out.extend_from_slice(&[0; 64]);
+                if named == "OptionBool" {
+                    return;
+                }
+                let resolved = idl
+                    .get("types")
+                    .and_then(|v| v.as_array())
+                    .and_then(|ts| {
+                        ts.iter()
+                            .find(|t| t.get("name").and_then(|n| n.as_str()) == Some(named))
+                    })
+                    .and_then(|t| t.get("type"))
+                    .and_then(|t| t.get("fields"))
+                    .and_then(|f| f.as_array());
+                // A type absent from the IDL's `types` contributes nothing:
+                // there is no honest body to build, so the instruction fails the
+                // probe rather than passing on filler.
+                if let Some(fields) = resolved {
+                    for f in fields {
+                        push_type(f.get("type"), idl, out);
+                    }
                 }
             }
             _ => out.extend_from_slice(&[0; 8]),
         }
     }
-    out
 }
 
 fn report(kind: &str, covered: &BTreeSet<String>, all: &[String], floor: usize) -> usize {
@@ -188,7 +219,7 @@ fn measure(
     let mut ix_covered = BTreeSet::new();
     for (item, name) in ix_items.iter().zip(&ix_names) {
         let mut data = discriminator(item, "global", name).to_vec();
-        data.extend_from_slice(&arg_bytes(item));
+        data.extend_from_slice(&arg_bytes(item, &idl));
         if parses(&data) {
             ix_covered.insert(name.clone());
         }

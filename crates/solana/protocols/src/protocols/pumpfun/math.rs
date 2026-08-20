@@ -96,7 +96,7 @@ impl BondingCurve {
 
         // All calculations in u128 to prevent overflow
         let amount_in = sol_amount as u128;
-        let reserve_in = self.virtual_sol_reserves as u128;
+        let reserve_in = self.virtual_quote_reserves as u128;
         let reserve_out = self.virtual_token_reserves as u128;
 
         // Calculate fees on input amount (ceiling division)
@@ -156,7 +156,7 @@ impl BondingCurve {
         // All calculations in u128 to prevent overflow
         let amount_in = token_amount as u128;
         let reserve_in = self.virtual_token_reserves as u128;
-        let reserve_out = self.virtual_sol_reserves as u128;
+        let reserve_out = self.virtual_quote_reserves as u128;
 
         // Constant product formula
         let numerator = reserve_out * amount_in;
@@ -212,7 +212,7 @@ impl BondingCurve {
         }
 
         let amount_out = token_amount as u128;
-        let reserve_in = self.virtual_sol_reserves as u128;
+        let reserve_in = self.virtual_quote_reserves as u128;
         let reserve_out = self.virtual_token_reserves as u128;
 
         if amount_out >= reserve_out {
@@ -281,12 +281,12 @@ impl BondingCurve {
             .div_ceil((FEE_DENOMINATOR - total_fee_bps) as u128);
 
         let reserve_in = self.virtual_token_reserves as u128;
-        let reserve_out = self.virtual_sol_reserves as u128;
+        let reserve_out = self.virtual_quote_reserves as u128;
 
         if sol_out_before_fees >= reserve_out {
             return Err(Error::InsufficientReserves {
                 needed: sol_out_before_fees as u64,
-                available: self.virtual_sol_reserves,
+                available: self.virtual_quote_reserves,
             });
         }
 
@@ -364,9 +364,9 @@ mod tests {
     fn test_curve() -> BondingCurve {
         BondingCurve {
             virtual_token_reserves: 1_000_000_000_000_000, // 1B tokens (6 decimals)
-            virtual_sol_reserves: 30_000_000_000,          // 30 SOL (9 decimals)
+            virtual_quote_reserves: 30_000_000_000,          // 30 SOL (9 decimals)
             real_token_reserves: 800_000_000_000_000,
-            real_sol_reserves: 0,
+            real_quote_reserves: 0,
             token_total_supply: 1_000_000_000_000_000,
             complete: false,
             creator: Pubkey::new_unique(),

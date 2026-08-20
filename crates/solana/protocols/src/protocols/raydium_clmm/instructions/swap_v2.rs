@@ -30,6 +30,7 @@ use crate::traits::InstructionBuilder;
 ///
 /// Remaining accounts: \[13\]=optional extended_bitmap, [14+]=tick arrays
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapV2Accounts {
     /// User wallet (signer).
     #[account(signer)]
@@ -76,7 +77,7 @@ pub struct SwapV2Accounts {
 ///
 /// Uses 8-byte Anchor discriminator.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SWAP_V2_DISCRIMINATOR)]
+#[instruction_data(discriminator = SWAP_V2_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapV2Params {
     /// Input amount (or output amount if `is_base_input` is false).
     pub amount: u64,

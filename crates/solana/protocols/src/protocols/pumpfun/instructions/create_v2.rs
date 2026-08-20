@@ -43,14 +43,20 @@
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
-use solana_protocols_macros::AccountMetas;
 
-use crate::parsing::{FromInstructionData, InstructionParseError};
+use crate::parsing::accounts::Conditional;
+use solana_protocols_macros::{AccountMetas, OnchainInstruction, InstructionData};
+
 
 use super::super::constants::CREATE_V2_DISCRIMINATOR;
 
 /// Account list for the `create_v2` instruction. 16 slots.
-#[derive(Debug, Clone, AccountMetas)]
+#[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
+#[idl(program = "pump", instruction = "create_v2")]
+#[onchain_ix(fixtures(
+    "pumpfun/ix_create_v2_n16.json",
+    "pumpfun/ix_create_v2_n19.json"
+))]
 pub struct CreateV2Accounts {
     /// Token mint (created by this instruction).
     #[account(writable, signer)]
@@ -101,11 +107,40 @@ pub struct CreateV2Accounts {
     /// Pumpfun program ID (Anchor self-referential CPI guard).
     #[account]
     pub program: Pubkey,
+
+    /// The quote mint, when the coin is launched against something other than
+    /// SOL.
+    ///
+    /// Appended past the IDL's list, so it is absent on the SOL-quoted launches
+    /// that make up nearly all of them. Not derivable — which mint a creator
+    /// picks is their choice — so unlike the other appended accounts here it is
+    /// a plain slot rather than something we can resolve.
+    #[account(conditional)]
+    pub quote_mint: Conditional,
+    /// The bonding curve's token account for that quote mint.
+    #[account(conditional)]
+    pub associated_quote_bonding_curve: Conditional,
+    /// The token program owning the quote mint.
+    #[account(conditional)]
+    pub quote_token_program: Conditional,
+
 }
 
 /// Parameters for the `create_v2` instruction. Strict superset of
 /// [`CreateParams`](super::CreateParams).
-#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, borsh::BorshSerialize)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
+#[instruction_data(discriminator = CREATE_V2_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_create_v2_n16.json",
+    "pumpfun/ix_create_v2_n19.json"
+), idl(program = "pump", instruction = "create_v2"))]
 pub struct CreateV2Params {
     /// Token name.
     pub name: String,
@@ -130,105 +165,21 @@ pub struct CreateV2Params {
     pub is_cashback_enabled: crate::protocols::OptionBool,
 }
 
-impl FromInstructionData for CreateV2Params {
-    fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError> {
-        let mut offset = 0;
-
-        let name = read_borsh_string(data, &mut offset)?;
-        let symbol = read_borsh_string(data, &mut offset)?;
-        let uri = read_borsh_string(data, &mut offset)?;
-        let creator = read_pubkey(data, &mut offset)?;
-        let is_mayhem_mode = read_bool(data, &mut offset)?;
-        // `OptionBool` is not borsh's `Option<bool>`. The IDL defines it as a
-        // struct wrapping a bool — one byte — and senders additionally emit the
-        // absent and two-byte forms. Reading it as a tagged option consumed a
-        // value byte that is not there, which is why every live 132-byte
-        // create_v2 failed to parse while the discriminator dispatched fine.
-        let is_cashback_enabled = crate::protocols::OptionBool::from_bytes(&data[offset..])
-            .map_err(|e| InstructionParseError::DeserializationFailed(e.to_string()))?;
-
-        Ok(Self {
-            name,
-            symbol,
-            uri,
-            creator,
-            is_mayhem_mode,
-            is_cashback_enabled,
-        })
-    }
-}
 
 // ---------------------------------------------------------------------
 // Borsh primitive helpers (local — keep create_v2.rs self-contained)
 // ---------------------------------------------------------------------
 
-fn read_borsh_string(data: &[u8], offset: &mut usize) -> Result<String, InstructionParseError> {
-    if *offset + 4 > data.len() {
-        return Err(InstructionParseError::DeserializationFailed(format!(
-            "create_v2: not enough data for string length at offset {offset}"
-        )));
-    }
-    let len = u32::from_le_bytes(data[*offset..*offset + 4].try_into().unwrap()) as usize;
-    *offset += 4;
-    if *offset + len > data.len() {
-        return Err(InstructionParseError::DeserializationFailed(format!(
-            "create_v2: string length {len} exceeds data at offset {offset}"
-        )));
-    }
-    let s = std::str::from_utf8(&data[*offset..*offset + len])
-        .map_err(|e| {
-            InstructionParseError::DeserializationFailed(format!("create_v2: invalid UTF-8: {e}"))
-        })?
-        .to_string();
-    *offset += len;
-    Ok(s)
-}
 
-fn read_pubkey(data: &[u8], offset: &mut usize) -> Result<Pubkey, InstructionParseError> {
-    if *offset + 32 > data.len() {
-        return Err(InstructionParseError::DeserializationFailed(format!(
-            "create_v2: not enough data for pubkey at offset {offset}"
-        )));
-    }
-    let bytes: [u8; 32] = data[*offset..*offset + 32].try_into().unwrap();
-    *offset += 32;
-    Ok(Pubkey::from(bytes))
-}
 
-fn read_bool(data: &[u8], offset: &mut usize) -> Result<bool, InstructionParseError> {
-    if *offset + 1 > data.len() {
-        return Err(InstructionParseError::DeserializationFailed(format!(
-            "create_v2: not enough data for bool at offset {offset}"
-        )));
-    }
-    let v = data[*offset] != 0;
-    *offset += 1;
-    Ok(v)
-}
 
-/// Anchor `OptionBool` is encoded with a single tag byte (`0` =
-/// `None`, `1` = `Some`) followed by the value byte when `Some`.
 
-impl CreateV2Params {
-    /// Argument encoding.
-    ///
-    /// Decode-only in practice — this codebase does not launch tokens — but the
-    /// instruction enum's generated `data()` needs every variant to be able to
-    /// answer. Returning the leading `(name, symbol, uri)` prefix would be a v1
-    /// body under a v2 discriminator, so this refuses by returning nothing and
-    /// the caller gets the bare discriminator.
-    #[must_use]
-    pub fn to_data(&self) -> Vec<u8> {
-        Vec::new()
-    }
-    /// Convenience: this instruction's discriminator. Useful for tests
-    /// that hand-craft instruction data.
-    pub const DISCRIMINATOR: [u8; 8] = CREATE_V2_DISCRIMINATOR;
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parsing::FromInstructionData;
+    use crate::parsing::InstructionParseError;
 
     fn pk(b: u8) -> Pubkey {
         Pubkey::new_from_array([b; 32])

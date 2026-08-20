@@ -28,7 +28,7 @@
 //!
 //! Each protocol's state type must implement:
 //! - [`SwapMath`] - Calculate swap outputs from pool state
-//! - `from_account_data(&[u8])` - Parse from raw bytes (via `#[derive(OnchainState)]`)
+//! - `from_account_data(&[u8])` - Parse from raw bytes (via `#[derive(borsh::BorshDeserialize, OnchainState)]`)
 //!
 //! Each protocol's instruction builder must implement:
 //! - `InstructionBuilder` - Build Solana instructions
@@ -1191,9 +1191,9 @@ mod tests {
     fn make_test_curve() -> pumpfun::BondingCurve {
         pumpfun::BondingCurve {
             virtual_token_reserves: 1_000_000_000_000_000,
-            virtual_sol_reserves: 30_000_000_000,
+            virtual_quote_reserves: 30_000_000_000,
             real_token_reserves: 800_000_000_000_000,
-            real_sol_reserves: 0,
+            real_quote_reserves: 0,
             token_total_supply: 1_000_000_000_000_000,
             complete: false,
             creator: Pubkey::new_unique(),
@@ -1206,9 +1206,9 @@ mod tests {
         let mut data = Vec::with_capacity(pumpfun::BONDING_CURVE_ACCOUNT_SIZE);
         data.extend_from_slice(&pumpfun::BONDING_CURVE_DISCRIMINATOR);
         data.extend_from_slice(&curve.virtual_token_reserves.to_le_bytes());
-        data.extend_from_slice(&curve.virtual_sol_reserves.to_le_bytes());
+        data.extend_from_slice(&curve.virtual_quote_reserves.to_le_bytes());
         data.extend_from_slice(&curve.real_token_reserves.to_le_bytes());
-        data.extend_from_slice(&curve.real_sol_reserves.to_le_bytes());
+        data.extend_from_slice(&curve.real_quote_reserves.to_le_bytes());
         data.extend_from_slice(&curve.token_total_supply.to_le_bytes());
         data.push(if curve.complete { 1 } else { 0 });
         data.extend_from_slice(curve.creator.as_ref());

@@ -1,0 +1,103 @@
+{
+ "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+ "instruction": "buy_v2",
+ "signature": "4B1woUScbZu7qJjEswxpMgMtDzhywaCzkrZwnn4MsTfV3tHHNDPtXznh4mrU5YCykqh5VFQSN9buzp7GkjsERhCU",
+ "slot": 440352193,
+ "top_level": false,
+ "discriminator": [
+  184,
+  23,
+  238,
+  97,
+  103,
+  197,
+  211,
+  61
+ ],
+ "accounts": [
+  {
+   "pubkey": "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf"
+  },
+  {
+   "pubkey": "EFoGaNW4MtA3LXUMwCbcGVx9YpQiCxqMD7ULiYYLpump"
+  },
+  {
+   "pubkey": "So11111111111111111111111111111111111111112"
+  },
+  {
+   "pubkey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  },
+  {
+   "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  },
+  {
+   "pubkey": "7VtfL8fvgNfhz17qKRMjzQEXgbdpnHHHQRh54R9jP2RJ"
+  },
+  {
+   "pubkey": "7GFUN3bWzJMKMRZ34JLsvcqdssDbXnp589SiE33KVwcC"
+  },
+  {
+   "pubkey": "EHAAiTxcdDwQ3U4bU6YcMsQGaekdzLS3B5SmYo46kJtL"
+  },
+  {
+   "pubkey": "CA7v8gHfbquYXyDnDx6QxWW8hmL1H7X6Y2RYDrGLnuck"
+  },
+  {
+   "pubkey": "B39B8fxntjGARf722F9B6J2L7iNmSak1cGTSpkzBxXES"
+  },
+  {
+   "pubkey": "HzA8sosoVdb4PgwtuDDgVRxGT9hFgZ9R6EGkJ5hCvqLa"
+  },
+  {
+   "pubkey": "C4kc8ciUPK1TxRdwShedUyNX1HstEjQMiagpzqkbxEwh"
+  },
+  {
+   "pubkey": "pXGQ6J2ziRCvmYSLTT55FASf2jSHeCD6gju5xka31yV"
+  },
+  {
+   "pubkey": "7RA3RkPNcbFq9wwGV7UxVp8YVAmyf7UxQ3AUXx7MMCXA"
+  },
+  {
+   "pubkey": "Bjucr6MAWVoDBzPe63ifqS1qGLfTS7PobRZCUXZR1iJG"
+  },
+  {
+   "pubkey": "6BVdoi9BjZDVt7yvbXQeZGM1aFTkCbDku4XYmEUzvBic"
+  },
+  {
+   "pubkey": "7u5vo2TbdFiKth6StJuFQidNKBMPstf92u9qc56zeVyi"
+  },
+  {
+   "pubkey": "AXx7oq7iF1bQSimm1mMdQ8Zff5jQAMGtmefKPEXWR8Hy"
+  },
+  {
+   "pubkey": "Hq2wp8uJ9jCPsYgNHex8RtqdvMPfVGoYwjvF1ATiwn2Y"
+  },
+  {
+   "pubkey": "8yXTE1RvSz5g8B7keiwAAJSiqb3Gxk4w2gWqHDL9Kn8e"
+  },
+  {
+   "pubkey": "Ewan82Dcg9eomw21XUiTwf9qztrBcfYo1vkhABcHKfPv"
+  },
+  {
+   "pubkey": "8Wf5TiAheLUqBrKXeYg2JtAFFMWtKdG2BSFgqUcPVwTt"
+  },
+  {
+   "pubkey": "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"
+  },
+  {
+   "pubkey": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+  }
+ ],
+ "data_b64": "uBfuYWfF0z3adijMulgAAP//////////",
+ "declared_accounts": 27,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

@@ -22,6 +22,7 @@ pub use meteora_dlmm_sdk::instructions::SwapExactOut2InstructionArgs;
 pub use meteora_dlmm_sdk::instructions::SWAP_EXACT_OUT2_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapExactOut2Accounts {
     #[account(writable)]
     pub lb_pair: Pubkey,

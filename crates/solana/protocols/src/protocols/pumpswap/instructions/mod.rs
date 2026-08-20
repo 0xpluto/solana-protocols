@@ -159,6 +159,11 @@ mod tests {
         data.extend_from_slice(&1u16.to_le_bytes()); // index
         data.extend_from_slice(&1_000_000u64.to_le_bytes()); // base_amount_in
         data.extend_from_slice(&500_000_000u64.to_le_bytes()); // quote_amount_in
+                                                               // The three arguments this builder omitted until 2026-08-17. A synthetic
+                                                               // body missing declared arguments is not a real instruction, and the
+                                                               // lenient decoder that accepted it is why they went unread.
+        data.extend_from_slice(&[7u8; 32]); // coin_creator
+        data.push(0); // is_mayhem_mode
         data
     }
 
@@ -174,7 +179,7 @@ mod tests {
     fn make_withdraw_data() -> Vec<u8> {
         let mut data = Vec::new();
         data.extend_from_slice(&WITHDRAW_DISCRIMINATOR);
-        data.extend_from_slice(&100_000u64.to_le_bytes()); // lp_amount_in
+        data.extend_from_slice(&100_000u64.to_le_bytes()); // lp_token_amount_in
         data.extend_from_slice(&1_000_000u64.to_le_bytes()); // min_base_amount_out
         data.extend_from_slice(&500_000_000u64.to_le_bytes()); // min_quote_amount_out
         data
@@ -270,7 +275,7 @@ mod tests {
         assert!(ix.is_withdraw());
         match ix {
             PumpSwapInstruction::Withdraw(params) => {
-                assert_eq!(params.lp_amount_in, 100_000);
+                assert_eq!(params.lp_token_amount_in, 100_000);
                 assert_eq!(params.min_base_amount_out, 1_000_000);
                 assert_eq!(params.min_quote_amount_out, 500_000_000);
             }
@@ -331,7 +336,12 @@ mod tests {
 
     #[test]
     fn lp_instructions_do_not_classify_as_swap() {
-        let create = PumpSwapInstruction::CreatePool(CreatePoolParams::new(0, 1000, 2000));
+        let create = PumpSwapInstruction::CreatePool(CreatePoolParams::new(
+            0,
+            1000,
+            2000,
+            solana_program::pubkey::Pubkey::default(),
+        ));
         assert!(create.as_swap().is_none());
 
         let deposit = PumpSwapInstruction::Deposit(DepositParams::new(100, 1000, 2000));
@@ -387,7 +397,7 @@ mod tests {
         let parsed = PumpSwapInstruction::try_from_slice(&data).unwrap();
         match parsed {
             PumpSwapInstruction::Withdraw(params) => {
-                assert_eq!(params.lp_amount_in, 500);
+                assert_eq!(params.lp_token_amount_in, 500);
                 assert_eq!(params.min_base_amount_out, 1000);
                 assert_eq!(params.min_quote_amount_out, 2000);
             }

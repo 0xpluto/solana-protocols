@@ -1,0 +1,40 @@
+{
+ "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+ "instruction": "init_user_volume_accumulator",
+ "signature": "r1gqQXkqVw1wYim82oov9RkT6VBeKXofhFJ69BxnDmhKM5FVnKeL2JR2Bcp2Hua2LVZTzEQp3G4bxYzJdmMmRoT",
+ "slot": 440352193,
+ "top_level": false,
+ "discriminator": [
+  94,
+  6,
+  202,
+  115,
+  255,
+  96,
+  232,
+  183
+ ],
+ "accounts": [
+  {
+   "pubkey": "AgmLJBMDCqWynYnQiPCuj9ewsNNsBJXyzoUhD9LJzN51"
+  },
+  {
+   "pubkey": "HPZRuC47Rxb4EA6uR5NoSXGm6QFmkoMswcdZnyNY7SAU"
+  },
+  {
+   "pubkey": "EMyg8TAJLVYWL9uXdXUhEyby5NGEYPXYe1WLmw734DrT"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"
+  },
+  {
+   "pubkey": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  }
+ ],
+ "data_b64": "XgbKc/9g6Lc=",
+ "declared_accounts": 6,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

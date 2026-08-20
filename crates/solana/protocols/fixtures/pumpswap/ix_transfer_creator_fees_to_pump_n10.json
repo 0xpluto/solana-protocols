@@ -1,0 +1,52 @@
+{
+ "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+ "instruction": "transfer_creator_fees_to_pump",
+ "signature": "UnP6WDpdpx1ZQaba7q4rPzAW5RAsvvFLikvX8dmB4FGHjKPYYCkzpRU3US5XMjTkfMoHL74UmiJFiNAaRGautyY",
+ "slot": 440352576,
+ "top_level": false,
+ "discriminator": [
+  139,
+  52,
+  134,
+  85,
+  228,
+  229,
+  108,
+  241
+ ],
+ "accounts": [
+  {
+   "pubkey": "So11111111111111111111111111111111111111112"
+  },
+  {
+   "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  },
+  {
+   "pubkey": "BXsyKeYATPGp6Uy5g3Vf35RvNGtPwuGU5EdYkyBhbMsk"
+  },
+  {
+   "pubkey": "38qGK4x7DzRK4AUEMmpeXjs8z1PuMAhpUE7iHrLwxugk"
+  },
+  {
+   "pubkey": "2dQa7pRL8czyJJsQfGyMBacqf9FSV96cwirov5KyUE4A"
+  },
+  {
+   "pubkey": "2LUxQBH7zrQTpWvGpLfE6EYbj8RYevrkPFY8w37Pe5Vu"
+  },
+  {
+   "pubkey": "GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"
+  },
+  {
+   "pubkey": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  }
+ ],
+ "data_b64": "izSGVeTlbPE=",
+ "declared_accounts": 10,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

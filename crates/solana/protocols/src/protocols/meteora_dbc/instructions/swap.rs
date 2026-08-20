@@ -24,6 +24,7 @@ use crate::traits::InstructionBuilder;
 /// \[9\]=payer(signer), \[10\]=token_base_program, \[11\]=token_quote_program,
 /// \[12\]=referral_token_account(writable), \[13\]=event_authority, \[14\]=program
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapAccounts {
     /// Pool authority PDA (constant across all pools).
     #[account]
@@ -74,7 +75,7 @@ pub struct SwapAccounts {
 
 /// Legacy swap instruction parameters (exact-in only).
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SWAP_DISCRIMINATOR)]
+#[instruction_data(discriminator = SWAP_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapParams {
     /// Amount of input tokens.
     pub amount_in: u64,
@@ -119,7 +120,7 @@ impl SwapMode {
 
 /// Swap2 instruction parameters (supports multiple modes).
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SWAP2_DISCRIMINATOR)]
+#[instruction_data(discriminator = SWAP2_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct Swap2Params {
     /// For ExactIn/PartialFill: amount_in. For ExactOut: amount_out.
     pub amount_0: u64,

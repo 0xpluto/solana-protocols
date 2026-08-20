@@ -29,6 +29,7 @@ use crate::traits::InstructionBuilder;
 /// Note: Remaining accounts (system_program, fee vaults) are optional
 /// and not part of the fixed layout.
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapAccounts {
     /// User wallet (signer).
     #[account(signer, writable)]
@@ -79,7 +80,7 @@ pub struct SwapAccounts {
 
 /// BuyExactIn instruction parameters.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = BUY_EXACT_IN_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_EXACT_IN_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct BuyExactInParams {
     /// Quote tokens to spend (exact input).
     pub amount_in: u64,
@@ -103,7 +104,7 @@ impl BuyExactInParams {
 
 /// BuyExactOut instruction parameters.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = BUY_EXACT_OUT_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_EXACT_OUT_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct BuyExactOutParams {
     /// Base tokens to receive (exact output).
     pub amount_out: u64,
@@ -127,7 +128,7 @@ impl BuyExactOutParams {
 
 /// SellExactIn instruction parameters.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SELL_EXACT_IN_DISCRIMINATOR)]
+#[instruction_data(discriminator = SELL_EXACT_IN_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SellExactInParams {
     /// Base tokens to sell (exact input).
     pub amount_in: u64,
@@ -151,7 +152,7 @@ impl SellExactInParams {
 
 /// SellExactOut instruction parameters.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SELL_EXACT_OUT_DISCRIMINATOR)]
+#[instruction_data(discriminator = SELL_EXACT_OUT_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SellExactOutParams {
     /// Quote tokens to receive (exact output).
     pub amount_out: u64,

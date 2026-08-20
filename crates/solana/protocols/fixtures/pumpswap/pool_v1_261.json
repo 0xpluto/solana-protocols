@@ -8,7 +8,7 @@
   "note": "261-byte PumpSwap Pool variant; fields identical through offset 244, trailing 17 bytes are zero padding.",
   "data_b64": "8ZptBBGxbbz/AQCn0vx0V4zmb6eJcgirQd1c8n7Ebt55MIRP0IedOXdz4gabiFf+q4GE+2h/Y0YYwDXaxDncGus7VZig8AAAAAABpGwD9Hsm1jeitd2ohOiAuCJaDXnQnMkEYewBZYx65xFLRHftI2UAvEENQHrI5QVrTJM7kV4YIEw312uxBUewFVU9yTslXslZSKSxWvLtIMkBsvgA7uK4bAqskYGeKWq0qruBtscaciI7mAR/C1WVdxMzSlgKAZtb8o/11H4vvVSAKwUAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
   "expected": {
-    "bump": 255,
+    "pool_bump": 255,
     "index": 1,
     "creator": "CJ7gbm8LAqLhEeMRSgybkuemJKdj64qagTuVvq75YmLD",
     "base_mint": "So11111111111111111111111111111111111111112",

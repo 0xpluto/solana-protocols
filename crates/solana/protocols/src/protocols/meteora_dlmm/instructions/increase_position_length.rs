@@ -22,6 +22,7 @@ pub use meteora_dlmm_sdk::instructions::IncreasePositionLengthInstructionArgs;
 pub use meteora_dlmm_sdk::instructions::INCREASE_POSITION_LENGTH_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct IncreasePositionLengthAccounts {
     #[account(writable, signer)]
     pub funder: Pubkey,

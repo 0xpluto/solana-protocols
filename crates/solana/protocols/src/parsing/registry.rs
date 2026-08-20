@@ -64,6 +64,30 @@ pub enum InstructionParseError {
     #[error("required log not found: {0}")]
     LogNotFound(String),
 
+    /// The instruction carried accounts this layout does not model.
+    ///
+    /// Extra accounts are **not** benign. An Anchor program reads them as
+    /// `ctx.remaining_accounts`, so an account we ignore is one the program
+    /// acted on and we did not record — pumpfun appends `bonding_curve_v2` to
+    /// every buy and sell, and it appears in no IDL. Silence here reads as "the
+    /// layout matched" while the layout was two accounts short.
+    ///
+    /// A struct that legitimately receives a variable tail declares an
+    /// `#[account(remaining)]` field, which must be named for what it holds and
+    /// carry a `reason`.
+    #[error(
+        "{modelled} accounts modelled but {actual} were sent: {} unmodelled, first {first}",
+        actual.saturating_sub(*modelled)
+    )]
+    UnmodelledAccounts {
+        /// How many the struct accounts for.
+        modelled: usize,
+        /// How many the instruction carried.
+        actual: usize,
+        /// The first account nothing claimed — the one to go identify.
+        first: Pubkey,
+    },
+
     /// Required account missing.
     #[error("missing account at index {0}")]
     MissingAccount(usize),
@@ -1017,6 +1041,8 @@ fn pumpfun_parse(
         | PumpfunInstruction::SellV2(_) => Ok(None),
         PumpfunInstruction::Create(params) => pumpfun_parse_create(instruction, params),
         PumpfunInstruction::CreateV2(params) => pumpfun_parse_create_v2(instruction, params),
+        // Migrations travel the `chain::extract` path too.
+        PumpfunInstruction::Migrate(_) | PumpfunInstruction::MigrateV2(_) => Ok(None),
         // This legacy registry only speaks swap/creation. Creator-fee movements
         // travel the `chain::extract` path, which is the live one.
         PumpfunInstruction::CollectCreatorFee(_)
@@ -1260,7 +1286,7 @@ fn pumpswap_parse(
                     params.min_base_amount_out,
                     params.min_quote_amount_out,
                 )
-                .with_lp_amount(params.lp_amount_in),
+                .with_lp_amount(params.lp_token_amount_in),
             )))
         }
         // Fee withdrawals are not swaps; the live `chain::extract` path turns
@@ -2277,11 +2303,15 @@ mod tests {
     fn pumpswap_parse_create_pool() {
         use crate::protocols::pumpswap::{CREATE_POOL_DISCRIMINATOR, PROGRAM_ID};
 
-        // 8 disc + 2 index + 8 base + 8 quote = 26
+        // Every declared argument. This body stopped at `quote_amount_in`
+        // until 2026-08-17 and still decoded, because the offset walk read a
+        // prefix and ignored the rest.
         let mut data = Vec::from(CREATE_POOL_DISCRIMINATOR);
         data.extend_from_slice(&1u16.to_le_bytes()); // index
         data.extend_from_slice(&1_000_000u64.to_le_bytes()); // base_amount_in
         data.extend_from_slice(&500_000_000u64.to_le_bytes()); // quote_amount_in
+        data.extend_from_slice(&[7u8; 32]); // coin_creator
+        data.push(0); // is_mayhem_mode
 
         // 18 accounts for CreatePool
         let accounts: Vec<Pubkey> = (0..18).map(|_| Pubkey::new_unique()).collect();
@@ -2319,8 +2349,8 @@ mod tests {
         data.extend_from_slice(&1_000_000u64.to_le_bytes()); // max_base_amount_in
         data.extend_from_slice(&500_000_000u64.to_le_bytes()); // max_quote_amount_in
 
-        // 18 accounts for Deposit
-        let accounts: Vec<Pubkey> = (0..18).map(|_| Pubkey::new_unique()).collect();
+        // 15 accounts for Deposit, per pump_amm.json.
+        let accounts: Vec<Pubkey> = (0..15).map(|_| Pubkey::new_unique()).collect();
 
         let ix = ParsedInstruction::new(PROGRAM_ID, accounts.clone(), data, 1, 0);
 
@@ -2353,12 +2383,12 @@ mod tests {
 
         // 8 disc + 8 lp + 8 base + 8 quote = 32
         let mut data = Vec::from(WITHDRAW_DISCRIMINATOR);
-        data.extend_from_slice(&100_000u64.to_le_bytes()); // lp_amount_in
+        data.extend_from_slice(&100_000u64.to_le_bytes()); // lp_token_amount_in
         data.extend_from_slice(&1_000_000u64.to_le_bytes()); // min_base_amount_out
         data.extend_from_slice(&500_000_000u64.to_le_bytes()); // min_quote_amount_out
 
-        // 18 accounts for Withdraw
-        let accounts: Vec<Pubkey> = (0..18).map(|_| Pubkey::new_unique()).collect();
+        // 15 accounts for Withdraw, per pump_amm.json.
+        let accounts: Vec<Pubkey> = (0..15).map(|_| Pubkey::new_unique()).collect();
 
         let ix = ParsedInstruction::new(PROGRAM_ID, accounts.clone(), data, 1, 0);
 
@@ -2374,7 +2404,7 @@ mod tests {
                 assert_eq!(remove.token_b, accounts[4]); // quote_mint
                 assert_eq!(remove.amount_a, 1_000_000); // min_base_amount_out
                 assert_eq!(remove.amount_b, 500_000_000); // min_quote_amount_out
-                assert_eq!(remove.lp_amount, Some(100_000)); // lp_amount_in
+                assert_eq!(remove.lp_amount, Some(100_000)); // lp_token_amount_in
                 assert!(remove.liquidity_delta.is_none());
             }
             ProtocolEvent::Swap(_)

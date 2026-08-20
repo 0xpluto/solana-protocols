@@ -21,6 +21,9 @@
 //! ```
 
 mod creator_fee;
+mod complete;
+mod complete_migration;
+mod create;
 mod trade;
 
 pub use creator_fee::{
@@ -41,3 +44,6 @@ pub const DECODED_EVENTS: &[&str] = &[
     <CollectCreatorFeeEvent as crate::parsing::event::ProtocolEvent>::NAME,
     <DistributeCreatorFeesEvent as crate::parsing::event::ProtocolEvent>::NAME,
 ];
+pub use complete::{CompleteEvent, COMPLETE_EVENT_DISCRIMINATOR};
+pub use complete_migration::{CompletePumpAmmMigrationEvent, COMPLETE_PUMP_AMM_MIGRATION_EVENT_DISCRIMINATOR};
+pub use create::{CreateEvent, CREATE_EVENT_DISCRIMINATOR};

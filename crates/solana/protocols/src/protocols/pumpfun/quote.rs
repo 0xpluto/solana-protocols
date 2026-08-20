@@ -45,7 +45,7 @@ pub struct PumpfunQuote {
     #[dep(computed = calculate_fee_tier(
         &fee_config.fee_tiers,
         bonding_curve_market_cap(
-            curve.virtual_sol_reserves,
+            curve.virtual_quote_reserves,
             curve.virtual_token_reserves,
             curve.token_total_supply,
         ),
@@ -77,7 +77,7 @@ impl PumpfunQuote {
     #[must_use]
     pub fn market_cap_lamports(&self) -> u128 {
         bonding_curve_market_cap(
-            self.curve.virtual_sol_reserves,
+            self.curve.virtual_quote_reserves,
             self.curve.virtual_token_reserves,
             self.curve.token_total_supply,
         )

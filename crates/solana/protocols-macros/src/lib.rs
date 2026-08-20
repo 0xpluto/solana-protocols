@@ -61,6 +61,7 @@
 use proc_macro::TokenStream;
 
 mod account_metas;
+mod fixture_walk;
 mod build_accounts;
 mod discriminator;
 mod event_layout;
@@ -117,7 +118,7 @@ pub fn derive_onchain_account(input: TokenStream) -> TokenStream {
 /// field — never a default, and deliberately not `Option<T>`, whose
 /// combinators collapse that distinction. See `onchain_state` for the
 /// full contract.
-#[proc_macro_derive(OnchainState, attributes(state))]
+#[proc_macro_derive(OnchainState, attributes(state, idl))]
 pub fn derive_onchain_state(input: TokenStream) -> TokenStream {
     onchain_state::derive(input)
 }
@@ -200,7 +201,7 @@ pub fn anchor_event_discriminator(input: TokenStream) -> TokenStream {
 /// }
 /// let data = params.to_data(); // 1 + 8 + 8 = 17 bytes
 /// ```
-#[proc_macro_derive(InstructionData, attributes(instruction_data))]
+#[proc_macro_derive(InstructionData, attributes(instruction_data, idl))]
 pub fn derive_instruction_data(input: TokenStream) -> TokenStream {
     instruction_data::derive(input)
 }
@@ -233,7 +234,7 @@ pub fn derive_instruction_data(input: TokenStream) -> TokenStream {
 /// let accounts = BuyAccounts { ... };
 /// let metas = accounts.to_account_metas();
 /// ```
-#[proc_macro_derive(AccountMetas, attributes(account, idl))]
+#[proc_macro_derive(AccountMetas, attributes(account, accounts, idl))]
 pub fn derive_account_metas(input: TokenStream) -> TokenStream {
     account_metas::derive(input)
 }

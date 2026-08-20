@@ -245,7 +245,9 @@ impl ClassifiesAsSwap for PumpfunInstruction {
             // Creator-fee movements are not swaps and not creations: nobody
             // trades, and the amount is a claim on fees already earned. They
             // surface as `ChainEvent::CreatorFee` from the extractor instead.
-            PumpfunInstruction::CollectCreatorFee(_)
+            PumpfunInstruction::Migrate(_)
+            | PumpfunInstruction::MigrateV2(_)
+            | PumpfunInstruction::CollectCreatorFee(_)
             | PumpfunInstruction::CollectCreatorFeeV2(_)
             | PumpfunInstruction::DistributeCreatorFees(_)
             | PumpfunInstruction::DistributeCreatorFeesV2(_) => None,
@@ -280,7 +282,9 @@ impl ClassifiesAsTokenCreation for PumpfunInstruction {
             // Creator-fee movements are not swaps and not creations: nobody
             // trades, and the amount is a claim on fees already earned. They
             // surface as `ChainEvent::CreatorFee` from the extractor instead.
-            PumpfunInstruction::CollectCreatorFee(_)
+            PumpfunInstruction::Migrate(_)
+            | PumpfunInstruction::MigrateV2(_)
+            | PumpfunInstruction::CollectCreatorFee(_)
             | PumpfunInstruction::CollectCreatorFeeV2(_)
             | PumpfunInstruction::DistributeCreatorFees(_)
             | PumpfunInstruction::DistributeCreatorFeesV2(_) => None,
@@ -359,6 +363,7 @@ mod tests {
             "Test".to_string(),
             "TST".to_string(),
             "https://example.com".to_string(),
+            Pubkey::new_unique(),
         ));
 
         assert!(instruction.as_swap().is_none());
@@ -371,6 +376,7 @@ mod tests {
             "Test Token".to_string(),
             "TEST".to_string(),
             "https://example.com/meta.json".to_string(),
+            Pubkey::new_unique(),
         ));
 
         let creation = instruction

@@ -84,6 +84,11 @@ pub use instructions::{
     create_ata_instruction,
     // Account types for parsing
     BuyAccounts,
+    MigrateAccounts,
+    MigrateParams,
+    MigrateV2Accounts,
+    MigrateV2Params,
+    BuyV2Accounts,
     // Instruction builders
     BuyBuilder,
     BuyExactQuoteInV2Params,
@@ -101,6 +106,7 @@ pub use instructions::{
     // Unified instruction enum
     PumpfunInstruction,
     PumpfunInstructionAccounts,
+    SellV2Accounts,
     PumpfunInstructionEvent,
     SellAccounts,
     SellBuilder,

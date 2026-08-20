@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
-use solana_protocols_macros::{AccountMetas, InstructionData};
+use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 
 use super::super::constants::WITHDRAW_DISCRIMINATOR;
 
@@ -14,64 +14,59 @@ use super::super::constants::WITHDRAW_DISCRIMINATOR;
 /// Account indices from v2-crates:
 /// \[0\]=pool, \[1\]=global_config, \[2\]=user, \[3\]=base_mint, \[4\]=quote_mint,
 /// \[5\]=lp_mint, \[6\]=user_base_token_account, \[7\]=user_quote_token_account,
-/// \[8\]=user_lp_token_account, \[9\]=pool_base_token_account,
+/// \[8\]=user_pool_token_account, \[9\]=pool_base_token_account,
 /// \[10\]=pool_quote_token_account, \[11\]=base_token_program,
 /// \[12\]=quote_token_program, \[13\]=lp_token_program, \[14\]=system_program,
 /// \[15\]=associated_token_program, \[16\]=event_authority, \[17\]=program
-#[derive(Debug, Clone, AccountMetas)]
+#[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
+#[idl(program = "pump_amm", instruction = "withdraw")]
+#[onchain_ix(fixtures(
+    "pumpswap/ix_withdraw_n15.json"
+))]
 pub struct WithdrawAccounts {
-    /// Pool state account.
+    /// IDL slot 0.
     #[account(writable)]
     pub pool: Pubkey,
-    /// PumpSwap global configuration.
+    /// IDL slot 1.
     #[account]
     pub global_config: Pubkey,
-    /// Liquidity provider (signer).
-    #[account(writable, signer)]
+    /// IDL slot 2.
+    #[account(signer)]
     pub user: Pubkey,
-    /// Base token mint (the meme token).
+    /// IDL slot 3.
     #[account]
     pub base_mint: Pubkey,
-    /// Quote token mint (WSOL).
+    /// IDL slot 4.
     #[account]
     pub quote_mint: Pubkey,
-    /// LP token mint.
+    /// IDL slot 5.
     #[account(writable)]
     pub lp_mint: Pubkey,
-    /// User's base token account.
+    /// IDL slot 6.
     #[account(writable)]
     pub user_base_token_account: Pubkey,
-    /// User's quote token account.
+    /// IDL slot 7.
     #[account(writable)]
     pub user_quote_token_account: Pubkey,
-    /// User's LP token account.
+    /// IDL slot 8.
     #[account(writable)]
-    pub user_lp_token_account: Pubkey,
-    /// Pool's base token vault.
+    pub user_pool_token_account: Pubkey,
+    /// IDL slot 9.
     #[account(writable)]
     pub pool_base_token_account: Pubkey,
-    /// Pool's quote token vault.
+    /// IDL slot 10.
     #[account(writable)]
     pub pool_quote_token_account: Pubkey,
-    /// Base token program (SPL Token or Token-2022).
+    /// IDL slot 11.
     #[account]
-    pub base_token_program: Pubkey,
-    /// Quote token program.
+    pub token_program: Pubkey,
+    /// IDL slot 12.
     #[account]
-    pub quote_token_program: Pubkey,
-    /// LP token program.
-    #[account]
-    pub lp_token_program: Pubkey,
-    /// System program.
-    #[account]
-    pub system_program: Pubkey,
-    /// Associated token program.
-    #[account]
-    pub associated_token_program: Pubkey,
-    /// Event authority PDA.
+    pub token_2022_program: Pubkey,
+    /// IDL slot 13.
     #[account]
     pub event_authority: Pubkey,
-    /// PumpSwap program.
+    /// IDL slot 14.
     #[account]
     pub program: Pubkey,
 }
@@ -86,10 +81,12 @@ pub struct WithdrawAccounts {
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = WITHDRAW_DISCRIMINATOR)]
+#[instruction_data(discriminator = WITHDRAW_DISCRIMINATOR, fixtures(
+    "pumpswap/ix_withdraw_n15.json"
+), idl(program = "pump_amm", instruction = "withdraw"))]
 pub struct WithdrawParams {
     /// LP tokens to burn.
-    pub lp_amount_in: u64,
+    pub lp_token_amount_in: u64,
     /// Minimum base tokens to receive (slippage protection).
     pub min_base_amount_out: u64,
     /// Minimum quote tokens (SOL) to receive (slippage protection).
@@ -99,9 +96,9 @@ pub struct WithdrawParams {
 impl WithdrawParams {
     /// Create new Withdraw parameters.
     #[must_use]
-    pub fn new(lp_amount_in: u64, min_base_amount_out: u64, min_quote_amount_out: u64) -> Self {
+    pub fn new(lp_token_amount_in: u64, min_base_amount_out: u64, min_quote_amount_out: u64) -> Self {
         Self {
-            lp_amount_in,
+            lp_token_amount_in,
             min_base_amount_out,
             min_quote_amount_out,
         }
@@ -123,13 +120,15 @@ mod tests {
         assert_eq!(&data[..8], &WITHDRAW_DISCRIMINATOR);
 
         let parsed = WithdrawParams::from_instruction_data(&data[8..]).unwrap();
-        assert_eq!(parsed.lp_amount_in, 100_000);
+        assert_eq!(parsed.lp_token_amount_in, 100_000);
         assert_eq!(parsed.min_base_amount_out, 1_000_000);
         assert_eq!(parsed.min_quote_amount_out, 500_000_000);
     }
 
     #[test]
     fn withdraw_accounts_count() {
-        assert_eq!(WithdrawAccounts::ACCOUNT_COUNT, 18);
+        // 15, per pump_amm.json and every real instruction. It asserted 18 while
+        // the struct declared three accounts the program does not take.
+        assert_eq!(WithdrawAccounts::ACCOUNT_COUNT, 15);
     }
 }

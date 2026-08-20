@@ -1,0 +1,49 @@
+{
+ "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+ "instruction": "claim_cashback",
+ "signature": "63NbBvpK2f7TKJf4yohVouPUVMWhzmyK3bChnbcXkarCjSYxac55FjTyDXwWVWpcg3mVSMBJAdbsJ9xnam4UfRWV",
+ "slot": 440352193,
+ "top_level": false,
+ "discriminator": [
+  37,
+  58,
+  35,
+  126,
+  190,
+  53,
+  228,
+  197
+ ],
+ "accounts": [
+  {
+   "pubkey": "GE8eiY9kJFpT7tK7GJ8C1z1Ex5PVWygBBuRL3J2BhjG4"
+  },
+  {
+   "pubkey": "BSbZwhYZZdd1p76DfNJ2RHBTnbRZTPiSxRwmkThr7R5E"
+  },
+  {
+   "pubkey": "So11111111111111111111111111111111111111112"
+  },
+  {
+   "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  },
+  {
+   "pubkey": "38F5DCkYJWykfsrsGMmzcqe8rQwCbbPjQkCto2mS869S"
+  },
+  {
+   "pubkey": "8eTqGMGZFhcKjzAj8cikRJ5Qe5FoSgETLQCX9expqtPX"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"
+  },
+  {
+   "pubkey": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  }
+ ],
+ "data_b64": "JTojfr415MU=",
+ "declared_accounts": 9,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

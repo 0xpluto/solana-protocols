@@ -783,9 +783,9 @@ mod tests {
         let mut data = Vec::with_capacity(81);
         data.extend_from_slice(&BONDING_CURVE_DISCRIMINATOR);
         data.extend_from_slice(&curve.virtual_token_reserves.to_le_bytes());
-        data.extend_from_slice(&curve.virtual_sol_reserves.to_le_bytes());
+        data.extend_from_slice(&curve.virtual_quote_reserves.to_le_bytes());
         data.extend_from_slice(&curve.real_token_reserves.to_le_bytes());
-        data.extend_from_slice(&curve.real_sol_reserves.to_le_bytes());
+        data.extend_from_slice(&curve.real_quote_reserves.to_le_bytes());
         data.extend_from_slice(&curve.token_total_supply.to_le_bytes());
         data.push(if curve.complete { 1 } else { 0 });
         data.extend_from_slice(curve.creator.as_ref());
@@ -797,9 +797,9 @@ mod tests {
             is_mayhem_mode: Legacy::Absent,
             is_cashback_coin: Legacy::Absent,
             virtual_token_reserves: 1_000_000_000_000_000,
-            virtual_sol_reserves: 30_000_000_000,
+            virtual_quote_reserves: 30_000_000_000,
             real_token_reserves: 800_000_000_000_000,
-            real_sol_reserves: 0,
+            real_quote_reserves: 0,
             token_total_supply: 1_000_000_000_000_000,
             complete: false,
             creator: pk(0xCC),
@@ -880,7 +880,7 @@ mod tests {
             .expect("dispatch 1");
 
         // Reserves move (buy happened), later slot.
-        curve.virtual_sol_reserves += 1_000_000_000;
+        curve.virtual_quote_reserves += 1_000_000_000;
         let data = encode_bonding_curve(&curve);
         registry
             .dispatch(&cache, &PROGRAM_ID, &curve_pubkey, &data, 501)
@@ -889,12 +889,12 @@ mod tests {
         // Current is the new state, slot 500 still reachable via history.
         let now =
             <LocalCache as CacheGet<Pubkey, BondingCurve>>::get(&cache, &curve_pubkey).unwrap();
-        assert_eq!(now.virtual_sol_reserves, 31_000_000_000);
+        assert_eq!(now.virtual_quote_reserves, 31_000_000_000);
 
         let then =
             <LocalCache as CacheGet<Pubkey, BondingCurve>>::get_at_slot(&cache, &curve_pubkey, 500)
                 .unwrap();
-        assert_eq!(then.virtual_sol_reserves, 30_000_000_000);
+        assert_eq!(then.virtual_quote_reserves, 30_000_000_000);
     }
 
     #[test]

@@ -16,6 +16,7 @@ use super::super::constants::DEPOSIT_IX;
 /// \[8\]=market, \[9\]=user_coin, \[10\]=user_pc, \[11\]=user_lp,
 /// \[12\]=user, \[13\]=market_event_queue
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct DepositAccounts {
     /// SPL Token program.
     #[account]
@@ -52,7 +53,7 @@ pub struct DepositAccounts {
     pub user_pc_token_account: Pubkey,
     /// User LP token account.
     #[account(writable)]
-    pub user_lp_token_account: Pubkey,
+    pub user_pool_token_account: Pubkey,
     /// User wallet (signer).
     #[account(signer)]
     pub user: Pubkey,
@@ -66,7 +67,7 @@ pub struct DepositAccounts {
 /// Uses 1-byte instruction index (0x03).
 /// Actual deposited amounts come from CPI transfers, not these params.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = [DEPOSIT_IX], discriminator_size = 1)]
+#[instruction_data(discriminator = [DEPOSIT_IX], discriminator_size = 1, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct DepositParams {
     /// Maximum coin (base) tokens to deposit.
     pub max_coin_amount: u64,

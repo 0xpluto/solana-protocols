@@ -18,6 +18,7 @@ use super::super::constants::INITIALIZE2_IX;
 /// \[15\]=market_program, \[16\]=market, \[17\]=user, \[18\]=user_coin,
 /// \[19\]=user_pc, \[20\]=user_lp
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct Initialize2Accounts {
     /// SPL Token program.
     #[account]
@@ -81,14 +82,14 @@ pub struct Initialize2Accounts {
     pub user_pc_token_account: Pubkey,
     /// User LP token account.
     #[account(writable)]
-    pub user_lp_token_account: Pubkey,
+    pub user_pool_token_account: Pubkey,
 }
 
 /// Initialize2 instruction parameters.
 ///
 /// Uses 1-byte instruction index (0x01).
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = [INITIALIZE2_IX], discriminator_size = 1)]
+#[instruction_data(discriminator = [INITIALIZE2_IX], discriminator_size = 1, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct Initialize2Params {
     /// Nonce for PDA derivation.
     pub nonce: u8,

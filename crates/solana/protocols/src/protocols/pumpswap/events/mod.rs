@@ -13,7 +13,10 @@
 
 mod buy;
 mod collect_coin_creator_fee;
+mod create_pool;
+mod deposit;
 mod sell;
+mod withdraw;
 
 pub use buy::{BuyEvent, BUY_EVENT_DISCRIMINATOR};
 pub use sell::{SellEvent, SELL_EVENT_DISCRIMINATOR};
@@ -31,3 +34,6 @@ pub const DECODED_EVENTS: &[&str] = &[
     <SellEvent as crate::parsing::event::ProtocolEvent>::NAME,
     <CollectCoinCreatorFeeEvent as crate::parsing::event::ProtocolEvent>::NAME,
 ];
+pub use create_pool::{CreatePoolEvent, CREATE_POOL_EVENT_DISCRIMINATOR};
+pub use deposit::{DepositEvent, DEPOSIT_EVENT_DISCRIMINATOR};
+pub use withdraw::{WithdrawEvent, WITHDRAW_EVENT_DISCRIMINATOR};

@@ -63,14 +63,50 @@ pub trait ExtractsSwap {
 /// No associated event: both pumpfun create forms carry everything needed in
 /// their accounts and arguments.
 pub trait ExtractsCreation {
+    /// The event carrying what the instruction does not: the supply minted and
+    /// the reserves the curve started at.
+    type Event: ProtocolEvent;
+
+    /// Build the creation, enriched by the event when the program emitted one.
+    ///
+    /// `Option`, not required. Requiring it would drop every creation from a
+    /// program build that predates the event — the identity and metadata are in
+    /// the instruction and are the point; the reserves are a bonus. The three
+    /// `Option` fields on [`TokenCreation`] say exactly this: `None` means the
+    /// creation was read from the instruction alone.
+    ///
     /// # Errors
     ///
     /// The account list does not match the layout this instruction declares.
     fn creation(
         &self,
+        event: Option<&Self::Event>,
         ix: &ParsedInstruction,
         ctx: &dyn ExtractContext,
     ) -> Result<TokenCreation, ExtractError>;
+}
+
+/// Find an `emit_cpi!` event where absence is routine.
+///
+/// [`child_event`] treats a missing event as an error, which is right when the
+/// instruction always emits one. `CompleteEvent` rides only on the trade that
+/// fills the curve, so on every other trade its absence is the normal case and
+/// must not be reported as a gap.
+///
+/// # Errors
+///
+/// Only [`ExtractError::EventUndecodable`] — a body that carried our
+/// discriminator and would not decode is a defect either way.
+pub fn optional_child_event<E: ProtocolEvent>(
+    ix: &ParsedInstruction,
+    all: &[ParsedInstruction],
+    program: &Pubkey,
+) -> Result<Option<E>, ExtractError> {
+    match child_event::<E>(ix, all, program) {
+        Ok(e) => Ok(Some(e)),
+        Err(ExtractError::EventMissing { .. }) => Ok(None),
+        Err(other) => Err(other),
+    }
 }
 
 /// An instruction that pays out accrued creator fees.
@@ -89,12 +125,42 @@ pub trait ExtractsCreatorFee {
     ) -> Result<CreatorFee, ExtractError>;
 }
 
-/// An instruction that moves a token from one protocol to another.
-pub trait ExtractsMigration {
+/// An instruction that adds or removes pool liquidity.
+///
+/// The declared arguments are bounds — `max_base_amount_in`, `min_base_amount_out`
+/// — never what moved, so the event is required exactly as it is for a swap.
+pub trait ExtractsLiquidity {
+    /// The event carrying what actually moved.
+    type Event: ProtocolEvent;
+
     /// # Errors
     ///
-    /// The account list does not match the layout this instruction declares.
-    fn migration(&self, ix: &ParsedInstruction) -> Result<Migration, ExtractError>;
+    /// The account list does not match, or the event and the accounts disagree.
+    fn liquidity(
+        &self,
+        event: &Self::Event,
+        ix: &ParsedInstruction,
+    ) -> Result<crate::chain::types::Liquidity, ExtractError>;
+}
+
+/// An instruction that moves a token from one protocol to another.
+///
+/// Carries an event like the other kinds do. It did not, and the cost was
+/// visible: pumpswap's migration read its amounts from the instruction's
+/// arguments and hardcoded `0` for the source pool, because the instruction
+/// simply does not carry them. The event does.
+pub trait ExtractsMigration {
+    /// The event carrying what actually moved.
+    type Event: ProtocolEvent;
+
+    /// # Errors
+    ///
+    /// The account list does not match, or the event and the accounts disagree.
+    fn migration(
+        &self,
+        event: &Self::Event,
+        ix: &ParsedInstruction,
+    ) -> Result<Migration, ExtractError>;
 }
 
 /// Find the `emit_cpi!` event an instruction produced, as a `Result`.

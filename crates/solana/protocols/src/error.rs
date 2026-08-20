@@ -177,6 +177,33 @@ impl Error {
     }
 }
 
+/// Adapt a layout decode failure into this crate's error type.
+///
+/// Written once as a `From` impl rather than four times as a `map_err` closure:
+/// the same match had been copy-pasted into every `state.rs`, so adding a
+/// variant to [`AccountParseError`] meant finding all of them, and the copies
+/// had already begun to disagree about which variants they named explicitly.
+///
+/// Exhaustive on purpose — no `_` arm. A new decode failure should break this
+/// one site and force a deliberate answer about how it surfaces, which is the
+/// whole reason the variants are typed.
+///
+/// [`AccountParseError`]: crate::parsing::state::AccountParseError
+impl From<crate::parsing::state::AccountParseError> for Error {
+    fn from(e: crate::parsing::state::AccountParseError) -> Self {
+        use crate::parsing::state::AccountParseError as A;
+        match e {
+            A::TooShort { len, need } => Error::AccountDataTooShort {
+                expected: need,
+                actual: len,
+            },
+            A::Discriminator | A::TruncatedVersion { .. } | A::Malformed { .. } => {
+                Error::invalid_account_data(e.to_string())
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

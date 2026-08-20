@@ -109,6 +109,8 @@ impl ProtocolExtractor for MeteoraDammV2Extractor {
         };
 
         Some(ChainEvent::Swap(Swap {
+            // Not a bonding-curve protocol.
+            completed_curve: false,
             // No such argument on this protocol.
             track_volume: crate::protocols::OptionBool::None,
             instruction: crate::swap_instruction::resolve(&outer.program_id, &outer.data),

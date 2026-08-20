@@ -333,7 +333,6 @@ where
 // Attribution health
 // ---------------------------------------------------------------------------
 
-static ATTR_TX: AtomicU64 = AtomicU64::new(0);
 static ATTR_TX_COMPLETE: AtomicU64 = AtomicU64::new(0);
 static ATTR_TX_TRUNCATED: AtomicU64 = AtomicU64::new(0);
 static ATTR_TX_DESYNCED: AtomicU64 = AtomicU64::new(0);
@@ -351,6 +350,9 @@ static ATTR_IX_OPENED: AtomicU64 = AtomicU64::new(0);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AttributionStats {
     /// Transactions whose logs were attributed.
+    ///
+    /// The sum of the four exit counters below, by construction rather than by
+    /// a counter kept in step with them.
     pub transactions: u64,
     /// Every instruction received its own `invoke`.
     pub complete: u64,
@@ -378,12 +380,22 @@ impl AttributionStats {
 /// Snapshot the attribution counters.
 #[must_use]
 pub fn attribution_stats() -> AttributionStats {
+    let complete = ATTR_TX_COMPLETE.load(Ordering::Relaxed);
+    let truncated = ATTR_TX_TRUNCATED.load(Ordering::Relaxed);
+    let desynced = ATTR_TX_DESYNCED.load(Ordering::Relaxed);
+    let overrun = ATTR_TX_OVERRUN.load(Ordering::Relaxed);
     AttributionStats {
-        transactions: ATTR_TX.load(Ordering::Relaxed),
-        complete: ATTR_TX_COMPLETE.load(Ordering::Relaxed),
-        truncated: ATTR_TX_TRUNCATED.load(Ordering::Relaxed),
-        desynced: ATTR_TX_DESYNCED.load(Ordering::Relaxed),
-        overrun: ATTR_TX_OVERRUN.load(Ordering::Relaxed),
+        // Derived, not counted. A separate `transactions` counter had to be
+        // kept equal to the sum of the exits by discipline, and `attribution_stats`
+        // reads several atomics one at a time — so a concurrent walk between two
+        // loads made "every walk takes exactly one exit" observably false. It was
+        // an intermittent test failure whose cause was a torn read, not a bug in
+        // the walk. Summing here makes the identity structural.
+        transactions: complete + truncated + desynced + overrun,
+        complete,
+        truncated,
+        desynced,
+        overrun,
         instructions: ATTR_IX.load(Ordering::Relaxed),
         instructions_opened: ATTR_IX_OPENED.load(Ordering::Relaxed),
     }
@@ -446,7 +458,6 @@ fn attach_logs(result: &mut [ParsedInstruction], entries: Vec<LogEntry>) {
     // Next instruction awaiting its `invoke`.
     let mut cursor = 0usize;
 
-    ATTR_TX.fetch_add(1, Ordering::Relaxed);
     ATTR_IX.fetch_add(result.len() as u64, Ordering::Relaxed);
     // `cursor` at return *is* the number of instructions that got their own
     // opening invoke, on every exit path, so the accounting cannot drift from

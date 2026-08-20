@@ -49,6 +49,19 @@ pub enum Legacy<T> {
     Absent,
 }
 
+impl<T> Legacy<T> {
+    /// Whether the field was there to read.
+    ///
+    /// Deliberately not `Option`-shaped: `Legacy` exists so that "the account
+    /// predates this field" cannot collapse into "the field is false", and
+    /// `is_some()` is the ergonomic path to exactly that collapse. This answers
+    /// only the question the version-group check asks.
+    #[must_use]
+    pub const fn is_present(&self) -> bool {
+        matches!(self, Self::Present(_))
+    }
+}
+
 impl<T: borsh::BorshDeserialize> borsh::BorshDeserialize for Legacy<T> {
     /// Read the field if the account still has bytes for it, otherwise
     /// [`Absent`](Self::Absent).
@@ -92,6 +105,17 @@ pub enum AccountParseError {
     #[error("discriminator mismatch")]
     Discriminator,
 
+    /// borsh refused the field bytes.
+    ///
+    /// Distinct from [`TooShort`](Self::TooShort), which is a length judgement
+    /// made before decoding: this is the codec itself rejecting what it read —
+    /// a `bool` outside `{0, 1}`, a length prefix past the end of the buffer.
+    #[error("account fields did not decode: {reason}")]
+    Malformed {
+        /// What borsh said.
+        reason: String,
+    },
+
     /// Part of a version group's bytes are present but not all of it.
     ///
     /// Distinct from an older account, which carries *none* of the group.
@@ -110,7 +134,7 @@ pub enum AccountParseError {
 ///
 /// Implemented by `#[derive(OnchainState)]`; hand-implementing it is a smell,
 /// because the point is that the field list and the byte layout are one thing.
-pub trait OnchainState: Sized {
+pub trait OnchainState: borsh::BorshDeserialize + Sized {
     /// Bytes every non-version-added field occupies, including any
     /// discriminator. Derived by summing the field types — never transcribed,
     /// which is how `POOL_ACCOUNT_SIZE = 301` came to reject the majority of
@@ -120,4 +144,29 @@ pub trait OnchainState: Sized {
     /// Read the account. Version-added fields absent from `data` come back
     /// `None`, never defaulted.
     fn from_account_data(data: &[u8]) -> Result<Self, AccountParseError>;
+
+    /// Decode the fields after the discriminator, borsh, **prefix read**.
+    ///
+    /// # Why not `try_from_slice`
+    ///
+    /// Instruction data is exactly what the sender wrote, so refusing trailing
+    /// bytes there is correct. An account is not: Solana allocates it at or
+    /// above its data size, and the difference is padding. Measured on real
+    /// mainnet accounts, PumpSwap pools arrive at 261, 300 and 301 bytes over
+    /// the same 244-byte field span — `try_from_slice` would reject the
+    /// majority of live pools.
+    ///
+    /// So the account path reads a prefix and leaves the remainder, while the
+    /// instruction path is strict. One codec, two entry points, and the
+    /// difference is a property of the data rather than a concession.
+    ///
+    /// # Errors
+    ///
+    /// The bytes are not a valid borsh encoding of this type's fields.
+    fn borsh_fields(after_discriminator: &[u8]) -> Result<Self, AccountParseError> {
+        let mut cursor = after_discriminator;
+        Self::deserialize(&mut cursor).map_err(|e| AccountParseError::Malformed {
+            reason: e.to_string(),
+        })
+    }
 }

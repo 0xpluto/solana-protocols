@@ -127,6 +127,23 @@ pub const FEE_DENOMINATOR: u64 = 10000;
 /// Seed for bonding curve PDA.
 pub const BONDING_CURVE_SEED: &[u8] = b"bonding-curve";
 
+/// Seed for the `bonding_curve_v2` PDA, appended past every buy/sell's declared
+/// account list.
+///
+/// Documented in pump's own `PUMP_CASHBACK_README`, which says it is appended
+/// **last**. Mainnet disagrees: across 33 tailed instructions it was first in 27
+/// and second in 6 (second exactly when a `UserVolumeAccumulator` took index 0).
+/// So it is located by deriving it and searching, never by index.
+/// `migrate` — `sha256("global:migrate")[..8]`, derived.
+pub const MIGRATE_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("migrate");
+
+/// `migrate_v2` — `sha256("global:migrate_v2")[..8]`, derived.
+pub const MIGRATE_V2_DISCRIMINATOR: [u8; 8] =
+    solana_protocols_macros::anchor_instruction_discriminator!("migrate_v2");
+
+pub const BONDING_CURVE_V2_SEED: &[u8] = b"bonding-curve-v2";
+
 /// Seed for creator vault PDA.
 pub const CREATOR_VAULT_SEED: &[u8] = b"creator-vault";
 

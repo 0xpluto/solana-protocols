@@ -6,30 +6,78 @@
 use solana_program::pubkey::Pubkey;
 
 use super::InstructionParseError;
+/// Marker: this type's arguments are borsh, and nothing else.
+///
+/// Implemented by `#[derive(InstructionData)]`. It carries no methods on
+/// purpose — decoding lives on [`FromInstructionData`], which is
+/// **blanket-implemented** for every type with this marker, so there is exactly
+/// one decoder and it is borsh's.
+///
+/// # Why the split
+///
+/// This used to be one trait whose `from_instruction_data` was a *provided*
+/// method. A provided method is a default, not a rule: five params structs
+/// quietly replaced it with `from_le_bytes` at literal offsets behind a
+/// `data.len() < N` check — a *minimum*, so trailing bytes were discarded rather
+/// than refused. That is how an undeclared `track_volume` rode along unnoticed,
+/// and it is invisible to any test, because the struct owned the decoder the
+/// test would have called.
+///
+/// Hand-writing a decoder is now a compile error: an `impl FromInstructionData`
+/// collides with the blanket impl, and rustc says so in those words.
+pub trait InstructionParams:
+    borsh::BorshDeserialize + borsh::BorshSerialize + Sized
+{
+}
 
-/// An instruction's arguments, decoded from the bytes after its discriminator.
+/// Private supertrait: the seal.
 ///
-/// # borsh is required, by construction
+/// A blanket impl alone is *not* enforcement. rustc permits a concrete
+/// `impl FromInstructionData for Foo` whenever it can prove `Foo` does not
+/// satisfy the blanket's bound — so a struct simply skipped the marker and kept
+/// its hand-rolled decoder, which is exactly what five of them had done. The
+/// seal closes that: implementing [`FromInstructionData`] requires this trait,
+/// and this trait is not nameable outside this module.
+mod sealed {
+    /// Implemented only for types carrying the borsh marker.
+    pub trait Sealed {}
+    impl<T: super::InstructionParams> Sealed for T {}
+}
+
+/// Decode an instruction's arguments.
 ///
-/// The supertrait bound is the point: Solana programs serialize their arguments
-/// with borsh, so anything that decodes them by another route is a second
-/// implementation of the producer's codec — the same defect class as a
-/// transcribed discriminator, and one that drifts silently. A params type
-/// without `BorshDeserialize` now fails to compile rather than quietly getting
-/// a hand-rolled offset walk.
-///
-/// The one encoding borsh cannot express is
-/// [`OptionBool`](crate::protocols::OptionBool), whose width is "whatever is
-/// left". It carries a hand-written impl so that every struct *containing* it is
-/// still derived — the exception is one primitive deep, not one per protocol.
-pub trait FromInstructionData: borsh::BorshDeserialize + borsh::BorshSerialize + Sized {
-    /// Parse from instruction data bytes (after discriminator).
+/// **Cannot be implemented by hand.** It is sealed on [`InstructionParams`], so
+/// the borsh blanket impl below is the only one that can exist; a hand-written
+/// decoder fails to compile with `the trait bound ...: Sealed is not satisfied`.
+pub trait FromInstructionData: sealed::Sealed + Sized {
+    /// Decode arguments (no discriminator) from instruction data.
+    ///
+    /// Strict: `try_from_slice` refuses leftovers. Instruction data is exactly
+    /// what the sender wrote — unlike an account, which Solana allocates at or
+    /// above its data size — so a byte past the last field means the program
+    /// grew an argument we do not model.
+    ///
+    /// A genuinely variable tail is expressed as a final
+    /// [`OptionBool`](crate::protocols::OptionBool) field, which consumes it.
     ///
     /// # Errors
     ///
-    /// The bytes are not a valid encoding of this type.
+    /// The bytes are not a valid borsh encoding of this type, or carry more than
+    /// it accounts for.
     fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError>;
 }
+
+impl<T: InstructionParams> FromInstructionData for T {
+    fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError> {
+        Self::try_from_slice(data).map_err(|e| {
+            InstructionParseError::DeserializationFailed(format!(
+                "{}: {e}",
+                std::any::type_name::<Self>()
+            ))
+        })
+    }
+}
+
 
 /// Trait for types that can be constructed from account pubkeys.
 ///
@@ -79,49 +127,12 @@ pub trait FromLogData: Sized {
     }
 }
 
-// =============================================================================
-// Default implementations for common types
-// =============================================================================
-
-/// Implement FromInstructionData for types that use borsh.
-#[macro_export]
-macro_rules! impl_from_instruction_data_borsh {
-    ($type:ty) => {
-        impl $crate::parsing::FromInstructionData for $type {
-            fn from_instruction_data(
-                data: &[u8],
-            ) -> Result<Self, $crate::parsing::InstructionParseError> {
-                borsh::BorshDeserialize::try_from_slice(data).map_err(|e| {
-                    $crate::parsing::InstructionParseError::DeserializationFailed(e.to_string())
-                })
-            }
-        }
-    };
-}
-
-/// Implement FromInstructionData for types with fixed-size binary layout.
-#[macro_export]
-macro_rules! impl_from_instruction_data_fixed {
-    ($type:ty, $size:expr) => {
-        impl $crate::parsing::FromInstructionData for $type {
-            fn from_instruction_data(
-                data: &[u8],
-            ) -> Result<Self, $crate::parsing::InstructionParseError> {
-                if data.len() < $size {
-                    return Err(
-                        $crate::parsing::InstructionParseError::DeserializationFailed(format!(
-                            "expected {} bytes, got {}",
-                            $size,
-                            data.len()
-                        )),
-                    );
-                }
-                // Safety: We verified the length
-                Ok(unsafe { std::ptr::read(data.as_ptr() as *const Self) })
-            }
-        }
-    };
-}
+// The two `macro_rules!` that used to live here generated hand-written
+// `FromInstructionData` impls — one wrapping borsh, one doing a `data.len() <
+// $size` check and ignoring the remainder. Zero call sites, and the second is
+// the exact minimum-length shape that let trailing arguments pass unnoticed.
+// Deleted rather than left: a sealed trait with a public macro that punches
+// through it is a gate with a door beside it.
 
 #[cfg(test)]
 mod tests {
@@ -180,17 +191,12 @@ impl NoParams {
     }
 }
 
-impl FromInstructionData for NoParams {
-    fn from_instruction_data(data: &[u8]) -> Result<Self, InstructionParseError> {
-        if data.is_empty() {
-            return Ok(Self);
-        }
-        Err(InstructionParseError::DeserializationFailed(format!(
-            "instruction declares no arguments, got {} bytes",
-            data.len()
-        )))
-    }
-}
+/// `NoParams` decodes through the same blanket impl as everything else.
+///
+/// It hand-wrote its own `from_instruction_data` too. borsh on a unit struct
+/// accepts exactly zero bytes and refuses any trailing byte — the identical
+/// semantics, from the one codec.
+impl InstructionParams for NoParams {}
 
 #[cfg(test)]
 mod no_params_tests {

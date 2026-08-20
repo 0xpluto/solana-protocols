@@ -13,6 +13,7 @@
 //! flag. Using the wrong recipient → transaction reverts.
 
 use borsh::BorshDeserialize;
+use solana_protocols_macros::OnchainState;
 use solana_program::pubkey::Pubkey;
 
 /// Full layout of the Pumpfun Global state account.
@@ -43,7 +44,10 @@ use solana_program::pubkey::Pubkey;
 /// | `mayhem_mode_enabled`          | bool         | 1     |
 /// | `reserved_fee_recipients`      | [Pubkey; 7]  | 224   |
 /// | `is_cashback_enabled`          | bool         | 1     |
-#[derive(BorshDeserialize, Debug, Clone)]
+#[derive(BorshDeserialize, Debug, Clone, serde::Serialize, OnchainState)]
+#[idl(program = "pump", account = "Global")]
+#[state(discriminator = super::constants::GLOBAL_DISCRIMINATOR)]
+#[state(fixtures("pumpfun/global.json"))]
 pub struct PumpfunGlobal {
     pub initialized: bool,
     pub authority: Pubkey,
@@ -70,24 +74,17 @@ pub struct PumpfunGlobal {
 
 impl PumpfunGlobal {
     /// Parse from raw account data (8-byte discriminator prefix included).
-    /// Returns `None` on malformed / too-short input; caller decides
-    /// whether to log / error.
-    pub fn from_account_data(data: &[u8]) -> Option<Self> {
-        const DISC_LEN: usize = 8;
-        if data.len() < DISC_LEN {
-            return None;
-        }
-        match Self::deserialize(&mut &data[DISC_LEN..]) {
-            Ok(global) => Some(global),
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    len = data.len(),
-                    "PumpfunGlobal: borsh deserialization failed"
-                );
-                None
-            }
-        }
+    ///
+    /// # Errors
+    ///
+    /// The discriminator does not match, or the body does not decode. This
+    /// returned `Option` and logged the reason at `warn!`, which the default
+    /// `solana_protocols=error` filter made unreachable — and it checked no
+    /// discriminator at all, so any account of the right length decoded.
+    pub fn from_account_data(
+        data: &[u8],
+    ) -> ::core::result::Result<Self, crate::parsing::state::AccountParseError> {
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data)
     }
 }
 
@@ -115,7 +112,13 @@ impl PumpfunFeeRecipients {
     }
 
     /// Parse raw account data and extract the two recipients in one shot.
-    pub fn from_account_data(data: &[u8]) -> Option<Self> {
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`PumpfunGlobal::from_account_data`] refuses.
+    pub fn from_account_data(
+        data: &[u8],
+    ) -> ::core::result::Result<Self, crate::parsing::state::AccountParseError> {
         PumpfunGlobal::from_account_data(data).map(|g| Self::from_global(&g))
     }
 
@@ -214,7 +217,9 @@ mod tests {
             reserved_fee_recipients,
             is_cashback_enabled: true,
         };
-        let mut out = vec![0u8; 8]; // 8-byte discriminator prefix
+        // The real discriminator: `from_account_data` checks it now, so a
+        // synthetic account built with a zero prefix is correctly refused.
+        let mut out = super::super::constants::GLOBAL_DISCRIMINATOR.to_vec();
         out.extend(borsh::to_vec(&g).unwrap());
         out
     }
@@ -241,7 +246,7 @@ mod tests {
 
     #[test]
     fn from_account_data_returns_none_on_short_input() {
-        assert!(PumpfunGlobal::from_account_data(&[0u8; 4]).is_none());
-        assert!(PumpfunGlobal::from_account_data(&[]).is_none());
+        assert!(PumpfunGlobal::from_account_data(&[0u8; 4]).is_err());
+        assert!(PumpfunGlobal::from_account_data(&[]).is_err());
     }
 }

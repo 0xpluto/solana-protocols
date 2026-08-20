@@ -20,9 +20,9 @@
 //! // These are pump.fun's launch-state reserves.
 //! let curve = BondingCurve {
 //!     virtual_token_reserves: 1_073_000_000_000_000,
-//!     virtual_sol_reserves: 30_000_000_000,
+//!     virtual_quote_reserves: 30_000_000_000,
 //!     real_token_reserves: 793_100_000_000_000,
-//!     real_sol_reserves: 0,
+//!     real_quote_reserves: 0,
 //!     token_total_supply: 1_000_000_000_000_000,
 //!     complete: false,
 //!     creator: Pubkey::default(),
@@ -141,8 +141,29 @@ pub(crate) mod test_fixtures;
 mod verified_decoder_completeness {
     fn assert_verified<H: solana_account_traits::VerifiedDecoder>() {}
 
+    /// The declared set of Anchor account handlers.
+    ///
+    /// Hand-maintained, and [`the_declared_set_is_every_handler_in_the_tree`]
+    /// is what keeps it honest.
+    ///
+    /// [`the_declared_set_is_every_handler_in_the_tree`]:
+    ///     Self::the_declared_set_is_every_handler_in_the_tree
+    const DECLARED: [&str; 8] = [
+        "PumpSwapPoolHandler",
+        "PumpfunBondingCurveHandler",
+        "PumpfunGlobalHandler",
+        "PumpfunFeeConfigHandler",
+        "LbPairHandler",
+        "BinArrayHandler",
+        "BinArrayBitmapExtensionHandler",
+        "PositionV2Handler",
+    ];
+
+    /// Every declared handler carries the derive's proof: a compile-time
+    /// discriminator plus a golden fixture. A handler listed here without
+    /// `#[derive(OnchainAccount)]` fails to compile.
     #[test]
-    fn every_anchor_account_handler_is_verified() {
+    fn every_declared_handler_is_verified() {
         use crate::protocols::meteora_dlmm::handler::{
             BinArrayBitmapExtensionHandler, BinArrayHandler, LbPairHandler, PositionV2Handler,
         };
@@ -159,6 +180,60 @@ mod verified_decoder_completeness {
         assert_verified::<BinArrayHandler>();
         assert_verified::<BinArrayBitmapExtensionHandler>();
         assert_verified::<PositionV2Handler>();
+    }
+
+    /// The declared set is *every* handler in the tree, not merely a set that
+    /// happens to compile.
+    ///
+    /// Without this the list above proves nothing about a handler nobody added
+    /// to it: a new `#[derive(OnchainAccount)]` type would be unverified,
+    /// unregistered, and completely silent — the check-that-does-not-run shape,
+    /// in the file whose whole job is preventing it.
+    ///
+    /// Reads the source because there is no link-time inventory to ask. The
+    /// alternative — a `handlers!` macro owning the list — moves the same
+    /// hand-maintenance somewhere tidier without closing the hole.
+    #[test]
+    fn the_declared_set_is_every_handler_in_the_tree() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/protocols");
+        let mut found = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("protocols dir is readable") {
+                let path = entry.expect("readable entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                let src = std::fs::read_to_string(&path).expect("source is readable");
+                // `#[derive(… OnchainAccount)]` … `pub struct <Name>`
+                for (idx, _) in src.match_indices("OnchainAccount)]") {
+                    let after = &src[idx..];
+                    let name = after
+                        .split("struct ")
+                        .nth(1)
+                        .expect("a derive is followed by its struct")
+                        .split(|c: char| !c.is_alphanumeric() && c != '_')
+                        .next()
+                        .expect("struct name")
+                        .to_string();
+                    found.push(name);
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+        let mut declared: Vec<String> = DECLARED.iter().map(|s| (*s).to_string()).collect();
+        declared.sort();
+        assert_eq!(
+            found, declared,
+            "a handler in the tree is missing from DECLARED (or vice versa) — \
+             add it here, to the registration in the consuming binary, and to \
+             every_declared_handler_is_verified"
+        );
     }
 }
 

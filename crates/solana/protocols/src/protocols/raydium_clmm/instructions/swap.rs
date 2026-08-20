@@ -21,6 +21,7 @@ use super::super::constants::SWAP_DISCRIMINATOR;
 ///
 /// Remaining accounts (index 9+) are tick array accounts (writable, variable count).
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapAccounts {
     /// User wallet (signer).
     #[account(signer)]
@@ -55,7 +56,7 @@ pub struct SwapAccounts {
 ///
 /// Uses 8-byte Anchor discriminator.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SWAP_DISCRIMINATOR)]
+#[instruction_data(discriminator = SWAP_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapParams {
     /// Input amount (or output amount if `is_base_input` is false).
     pub amount: u64,

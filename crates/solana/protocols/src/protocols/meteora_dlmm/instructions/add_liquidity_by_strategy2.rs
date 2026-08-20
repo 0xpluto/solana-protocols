@@ -22,6 +22,7 @@ pub use meteora_dlmm_sdk::instructions::AddLiquidityByStrategy2InstructionArgs;
 pub use meteora_dlmm_sdk::instructions::ADD_LIQUIDITY_BY_STRATEGY2_DISCRIMINATOR;
 
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct AddLiquidityByStrategy2Accounts {
     #[account(writable)]
     pub position: Pubkey,
@@ -52,6 +53,23 @@ pub struct AddLiquidityByStrategy2Accounts {
     pub event_authority: Pubkey,
     #[account]
     pub program: Pubkey,
+
+    /// The bin-array PDAs the deposit range spans, appended as writable
+    /// remaining accounts.
+    ///
+    /// How many depends on how wide the range is, which is not knowable from
+    /// the account list — the same shape as CLMM's tick arrays. Meteora's own
+    /// client appends them here and `remaining_accounts_info.slices` is left
+    /// empty, so position past the declared list is all that identifies them.
+    #[account(
+        writable,
+        remaining,
+        reason = "bin-array PDAs for the deposit range: the count depends on how \
+                  many bins the range spans, which the account list does not say, \
+                  and each is the same kind of thing so there is nothing to name"
+    )]
+    pub bin_arrays: Vec<Pubkey>,
+
 }
 
 #[derive(Debug, Clone)]

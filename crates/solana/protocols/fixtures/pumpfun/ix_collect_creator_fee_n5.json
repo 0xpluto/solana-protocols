@@ -1,0 +1,37 @@
+{
+ "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+ "instruction": "collect_creator_fee",
+ "signature": "5gw3xUgJjyWNyhAmErmiLz6SznpXorrZejSTQTB21EmQ3deNjxgtU7dQWvhfXAosyZ8L7ch7A1diKc94AT9feTmy",
+ "slot": 440352220,
+ "top_level": false,
+ "discriminator": [
+  20,
+  22,
+  86,
+  123,
+  198,
+  28,
+  219,
+  132
+ ],
+ "accounts": [
+  {
+   "pubkey": "6EuRYeh7W9xR2JdfMCZDb4T8X86wMFtSPkN99jASXvpf"
+  },
+  {
+   "pubkey": "9gXB6LAzm43Mme8zwF5dn94xVt6fDDpojbHQyNQqFoUb"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"
+  },
+  {
+   "pubkey": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+  }
+ ],
+ "data_b64": "FBZWe8Yc24Q=",
+ "declared_accounts": 5,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

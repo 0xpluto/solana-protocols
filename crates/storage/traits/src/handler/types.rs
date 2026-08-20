@@ -72,3 +72,59 @@ pub enum HandlerError {
     #[error("apply failed for account {pubkey}: {reason}")]
     Apply { pubkey: Pubkey, reason: String },
 }
+
+impl HandlerError {
+    /// Every label [`reason`](Self::reason) can return.
+    ///
+    /// Consumers pre-register their counters from this so a dashboard shows
+    /// each reason from boot rather than only once it first fires. It lives
+    /// beside the match instead of in the consumer: a consumer that keeps its
+    /// own `FAILURE_REASONS: [&str; 3]` still compiles when a variant is added
+    /// here — the match breaks (exhaustive, good), but that array is silently
+    /// short, so the new reason would never be pre-registered.
+    pub const REASONS: [&'static str; 3] = ["deserialize", "no_handler", "apply"];
+
+    /// Stable label for counters and log lines.
+    ///
+    /// A method rather than `Debug` so the metric's cardinality is bounded by
+    /// [`REASONS`](Self::REASONS) — the payloads (which pubkey, which length)
+    /// belong in the log line, not in a label.
+    #[must_use]
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Self::Deserialize { .. } => "deserialize",
+            Self::NoHandler { .. } => "no_handler",
+            Self::Apply { .. } => "apply",
+        }
+    }
+}
+
+#[cfg(test)]
+mod reason_tests {
+    use super::*;
+
+    /// `REASONS` must list exactly what `reason()` can return, or a consumer
+    /// pre-registers a label that never fires and misses one that does.
+    #[test]
+    fn reasons_covers_every_variant() {
+        let all = [
+            HandlerError::Deserialize {
+                data_len: 0,
+                reason: String::new(),
+            },
+            HandlerError::NoHandler {
+                program_id: Pubkey::new_from_array([0; 32]),
+                discriminator: None,
+            },
+            HandlerError::Apply {
+                pubkey: Pubkey::new_from_array([0; 32]),
+                reason: String::new(),
+            },
+        ];
+        let produced: std::collections::HashSet<_> =
+            all.iter().map(HandlerError::reason).collect();
+        let declared: std::collections::HashSet<_> = HandlerError::REASONS.into_iter().collect();
+        assert_eq!(produced, declared);
+        assert_eq!(produced.len(), all.len(), "two variants share a label");
+    }
+}

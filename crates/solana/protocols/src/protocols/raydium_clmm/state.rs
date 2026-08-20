@@ -18,7 +18,8 @@ use solana_program::pubkey::Pubkey;
 /// Size: ~1544 bytes (excluding discriminator). Fields exactly match the
 /// on-chain layout for correct bincode deserialization.
 #[repr(C)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default, OnchainState)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "raydium_clmm", account = "PoolState")]
 #[state(discriminator = CLMM_POOL_STATE_DISCRIMINATOR)]
 #[state(fixtures("raydium_clmm/pool_account.json"))]
 pub struct PoolState {
@@ -102,7 +103,8 @@ pub struct PoolState {
 
 /// Reward info for a single reward token.
 #[repr(C)]
-#[derive(Deserialize, Serialize, Debug, Clone, Default, OnchainState)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "raydium_clmm", account = "RewardInfo")]
 #[state(no_discriminator)]
 pub struct RewardInfo {
     /// Reward state (0=uninitialized, 1=initialized, 2=opening, 3=ended).
@@ -114,7 +116,10 @@ pub struct RewardInfo {
     /// Last update timestamp.
     pub last_update_time: u64,
     /// Emissions per second as Q64.64.
-    pub emissions_per_second: u128,
+    /// The program calls this `emissions_per_second_x64`: a Q64.64 fixed-point
+    /// rate, not tokens per second. Named without the suffix here, which invites
+    /// reading a 2^64-scaled integer as a plain rate.
+    pub emissions_per_second_x64: u128,
     /// Total rewards emitted.
     pub reward_total_emissioned: u64,
     /// Total rewards claimed.

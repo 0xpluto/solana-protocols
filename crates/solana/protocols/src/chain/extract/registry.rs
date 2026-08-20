@@ -166,6 +166,7 @@ mod tests {
             _ctx: &dyn ExtractContext,
         ) -> Option<ChainEvent> {
             Some(ChainEvent::Swap(Swap {
+                completed_curve: false,
                 track_volume: crate::protocols::OptionBool::None,
                 instruction: crate::swap_instruction::SwapInstruction::Unknown([0; 8]),
                 protocol: Protocol::Pumpfun, // tag doesn't matter for this test

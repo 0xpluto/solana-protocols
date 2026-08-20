@@ -11,7 +11,7 @@ use solana_protocols_macros::OnchainState;
 use super::constants::DBC_VIRTUAL_POOL_DISCRIMINATOR;
 use solana_program::pubkey::Pubkey;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// Minimum account data size (8-byte discriminator + 416 bytes state).
 pub const DBC_VIRTUAL_POOL_ACCOUNT_SIZE: usize = 424;
@@ -21,13 +21,15 @@ const Q64_F64: f64 = 18_446_744_073_709_551_616.0;
 
 /// Volatility tracker for dynamic fee calculation.
 /// Size: 64 bytes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "meteora_dbc", account = "VolatilityTracker")]
 #[state(no_discriminator)]
 pub struct VolatilityTracker {
     /// Last fee update timestamp.
     pub last_update_timestamp: u64,
     /// Alignment padding.
-    pub _padding: [u8; 8],
+    /// The program calls this `padding`.
+    pub padding: [u8; 8],
     /// Reference sqrt price for volatility tracking.
     pub sqrt_price_reference: u128,
     /// Current volatility accumulator.
@@ -38,7 +40,8 @@ pub struct VolatilityTracker {
 
 /// Accumulated fee metrics.
 /// Size: 32 bytes.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "meteora_dbc", account = "PoolMetrics")]
 #[state(no_discriminator)]
 pub struct PoolMetrics {
     /// Total protocol base token fees.
@@ -81,7 +84,8 @@ impl MigrationProgress {
 /// Meteora DBC VirtualPool (main pool account state).
 ///
 /// Size: 416 bytes (without discriminator).
-#[derive(Debug, Clone, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "meteora_dbc", account = "VirtualPool")]
 #[state(discriminator = DBC_VIRTUAL_POOL_DISCRIMINATOR)]
 #[state(fixtures("meteora_dbc/pool_account.json"))]
 pub struct VirtualPool {
@@ -158,17 +162,7 @@ impl VirtualPool {
     ///
     /// The data is too short, or carries another account type's discriminator.
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
-            |e| match e {
-                crate::parsing::state::AccountParseError::TooShort { len, need } => {
-                    Error::AccountDataTooShort {
-                        expected: need,
-                        actual: len,
-                    }
-                }
-                other => Error::invalid_account_data(other.to_string()),
-            },
-        )
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(Into::into)
     }
 
     /// Check if the pool is active (not migrated).

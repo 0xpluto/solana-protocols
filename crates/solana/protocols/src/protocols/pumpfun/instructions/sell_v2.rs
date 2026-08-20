@@ -6,13 +6,12 @@
 //! "they happen to agree today" is not a reason to share a type, which is what
 //! the `buy`/`buy_v2` pair demonstrated by *not* agreeing.
 //!
-//! # Accounts
-//!
-//! No account struct: the v2 layouts are variable (26/27/28/29 slots observed),
-//! so identity is recovered from the `TradeEvent` rather than by slot index.
 
 use serde::{Deserialize, Serialize};
-use solana_protocols_macros::InstructionData;
+use solana_program::pubkey::Pubkey;
+
+use crate::parsing::accounts::Conditional;
+use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 
 use super::super::constants::SELL_V2_DISCRIMINATOR;
 
@@ -29,7 +28,11 @@ use super::super::constants::SELL_V2_DISCRIMINATOR;
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = SELL_V2_DISCRIMINATOR)]
+#[instruction_data(discriminator = SELL_V2_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_sell_v2_n26.json",
+    "pumpfun/ix_sell_v2_n27.json",
+    "pumpfun/ix_sell_v2_n28.json"
+), idl(program = "pump", instruction = "sell_v2"))]
 pub struct SellV2Params {
     /// Tokens to sell — the pinned side.
     pub amount: u64,
@@ -50,4 +53,149 @@ mod tests {
         assert_eq!(p.amount, 11);
         assert_eq!(p.min_sol_output, 22);
     }
+}
+
+/// Accounts for `sell_v2` — 26 named slots, then any remaining.
+///
+/// # Why this exists after all
+///
+/// This file used to say "no account struct: the v2 layouts are variable". That
+/// was the right observation and the wrong conclusion. The lists *are* variable
+/// — 26/27/28/29 slots observed on mainnet — but every extra account is a **suffix**,
+/// past the `event_authority` / `program` pair that terminates every Anchor
+/// `emit_cpi!` instruction. Counted from the end nothing is safe; counted from
+/// the start every named slot is exactly where the IDL puts it.
+///
+/// Settled from 63 recorded mainnet instructions (`fixtures/pumpfun/v2recs.json`):
+/// every position that is constant in the shortest form holds the *same* value
+/// at the *same* index in the longest, with zero disagreements.
+///
+/// # What `remaining` buys
+///
+/// Total accounting. The parser reads exactly the slots this instruction has —
+/// no more, because the named fields stop at 26; no fewer, because everything
+/// past them lands in `remaining` instead of being dropped on the floor.
+///
+/// The field names and their order are checked against the program's own IDL at
+/// **compile time** by `#[idl(...)]`, so a mis-numbered slot is a build failure
+/// rather than a wrong pubkey that looks like a right one.
+#[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
+#[onchain_ix(fixtures(
+    "pumpfun/ix_sell_v2_n26.json",
+    "pumpfun/ix_sell_v2_n27.json",
+    "pumpfun/ix_sell_v2_n28.json"
+))]
+#[accounts(program_id = super::super::constants::PROGRAM_ID)]
+#[idl(program = "pump", instruction = "sell_v2")]
+pub struct SellV2Accounts {
+    /// IDL slot 0.
+    #[account]
+    pub global: Pubkey,
+    /// IDL slot 1.
+    #[account]
+    pub base_mint: Pubkey,
+    /// IDL slot 2.
+    #[account]
+    pub quote_mint: Pubkey,
+    /// IDL slot 3.
+    #[account]
+    pub base_token_program: Pubkey,
+    /// IDL slot 4.
+    #[account]
+    pub quote_token_program: Pubkey,
+    /// IDL slot 5.
+    #[account]
+    pub associated_token_program: Pubkey,
+    /// IDL slot 6.
+    #[account(writable)]
+    pub fee_recipient: Pubkey,
+    /// IDL slot 7.
+    #[account(writable)]
+    pub associated_quote_fee_recipient: Pubkey,
+    /// IDL slot 8.
+    #[account(writable)]
+    pub buyback_fee_recipient: Pubkey,
+    /// IDL slot 9.
+    #[account(writable)]
+    pub associated_quote_buyback_fee_recipient: Pubkey,
+    /// IDL slot 10.
+    #[account(writable)]
+    pub bonding_curve: Pubkey,
+    /// IDL slot 11.
+    #[account(writable)]
+    pub associated_base_bonding_curve: Pubkey,
+    /// IDL slot 12.
+    #[account(writable)]
+    pub associated_quote_bonding_curve: Pubkey,
+    /// IDL slot 13.
+    #[account(writable, signer)]
+    pub user: Pubkey,
+    /// IDL slot 14.
+    #[account(writable)]
+    pub associated_base_user: Pubkey,
+    /// IDL slot 15.
+    #[account(writable)]
+    pub associated_quote_user: Pubkey,
+    /// IDL slot 16.
+    #[account(writable)]
+    pub creator_vault: Pubkey,
+    /// IDL slot 17.
+    #[account(writable)]
+    pub associated_creator_vault: Pubkey,
+    /// IDL slot 18.
+    #[account]
+    pub sharing_config: Pubkey,
+    /// IDL slot 19.
+    #[account(writable)]
+    pub user_volume_accumulator: Pubkey,
+    /// IDL slot 20.
+    #[account(writable)]
+    pub associated_user_volume_accumulator: Pubkey,
+    /// IDL slot 21.
+    #[account]
+    pub fee_config: Pubkey,
+    /// IDL slot 22.
+    #[account]
+    pub fee_program: Pubkey,
+    /// IDL slot 23.
+    #[account]
+    pub system_program: Pubkey,
+    /// IDL slot 24.
+    #[account]
+    pub event_authority: Pubkey,
+    /// IDL slot 25.
+    #[account]
+    pub program: Pubkey,
+    /// A second copy of the cashback accumulator, appended past the declared
+    /// list.
+    ///
+    /// `PDA(pumpfun, ["user_volume_accumulator", user])` — the *same* account
+    /// this layout already declares as `user_volume_accumulator`. Some callers
+    /// append it again, which is what pump's cashback docs ask for on the v1
+    /// `sell` (which has no such slot) and which carries over here where the
+    /// slot does exist. Resolved rather than ignored so it cannot be mistaken
+    /// for a [`buyback_vaults`](Self::buyback_vaults) entry.
+    #[account(resolved = super::super::accounts::derive_user_volume_accumulator_pda(&user))]
+    pub appended_user_volume_accumulator: Conditional,
+    /// The v2 bonding curve, appended to every buy and sell.
+    ///
+    /// `PDA(pumpfun, ["bonding-curve-v2", base_mint])`. Present on 33 of 33
+    /// tailed mainnet instructions. Located by derivation because its index is
+    /// not stable: first in 27, second in 6.
+    #[account(resolved = super::super::accounts::derive_bonding_curve_v2_pda(&base_mint))]
+    pub bonding_curve_v2: Conditional,
+    /// Fee destinations from the `pump_fees` global roster.
+    ///
+    /// A `Vec` because this genuinely is a list and a caller picks a subset:
+    /// eight `BuybackVault` accounts exist on chain, one direct call passed all
+    /// eight, five routed `sell`s passed one. Not derivable from the
+    /// instruction, so unlike the two above it cannot be resolved by name.
+    #[account(
+        remaining,
+        reason = "the pump_fees BuybackVault roster: eight exist on chain and a \
+                  caller credits any subset (one direct call passed all eight, five \
+                  routed sells passed one), so which ones appear is caller policy \
+                  rather than layout, and none is derivable from this instruction"
+    )]
+    pub buyback_vaults: Vec<Pubkey>,
 }

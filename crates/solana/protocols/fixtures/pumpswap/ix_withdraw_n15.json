@@ -1,0 +1,67 @@
+{
+ "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+ "instruction": "withdraw",
+ "signature": "4RgwpsNWUhdrmE1idhF6gmtoYc38MqsfFyTi8LccaCFP2AyP87bZ8KPU1FdC7u577V6NE2Y6gJGLj3gvWk1qfVyv",
+ "slot": 440352227,
+ "top_level": false,
+ "discriminator": [
+  183,
+  18,
+  70,
+  156,
+  148,
+  109,
+  161,
+  34
+ ],
+ "accounts": [
+  {
+   "pubkey": "6ZNGboSAqe8Geairj6w4b8E8LfSHz4xKMZEDKmwKmVKF"
+  },
+  {
+   "pubkey": "ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw"
+  },
+  {
+   "pubkey": "BhhnyhCW5YbqWWraj2rM6mifjEmNmVoqMMaRYjNemhtY"
+  },
+  {
+   "pubkey": "So11111111111111111111111111111111111111112"
+  },
+  {
+   "pubkey": "HHWkf1kDBhWV5f4JV4KQ3y3oif1Rge24A54x3udW88fA"
+  },
+  {
+   "pubkey": "J6tE2C8yV6fQsmWBXSrd3YJVk6xyxkJM2taK5N5MHy3"
+  },
+  {
+   "pubkey": "4fdH3sGQJxYtDC6GhLrPUsJcWe3rif3GVKTpn37b72Gx"
+  },
+  {
+   "pubkey": "8VkyhwTeRpEkg9x8Wd3djy4s13nD1fhNUkn6GvwxV1mx"
+  },
+  {
+   "pubkey": "3Ng7WvwyXzjQUpgDp4cP8FWMWztiEat9SwVeMQUtGoB2"
+  },
+  {
+   "pubkey": "Gnd4ctMGeJ7s3VjS5zCx2MSr5beNoGCiPd63hLj8RFyJ"
+  },
+  {
+   "pubkey": "9GcmdCNNnKmaZ6UEfSSCrefwxQbDNZyTdcnvCwaEwRiV"
+  },
+  {
+   "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  },
+  {
+   "pubkey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "pubkey": "GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"
+  },
+  {
+   "pubkey": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  }
+ ],
+ "data_b64": "txJGnJRtoSJkWRTBYQAAAEArX0UAAAAAu1hZsAMAAAA=",
+ "declared_accounts": 15,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

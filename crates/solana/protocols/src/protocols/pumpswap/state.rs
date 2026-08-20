@@ -41,7 +41,8 @@ use crate::error::{Error, Result};
 /// [`PoolWithReserves`]'s job.
 ///
 /// [`OnchainState`]: crate::parsing::state::OnchainState
-#[derive(Debug, Clone, Default, Serialize, Deserialize, OnchainState)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "pump_amm", account = "Pool")]
 #[state(discriminator = POOL_DISCRIMINATOR)]
 #[state(fixtures(
     "pumpswap/pool_v1_261.json",
@@ -50,7 +51,8 @@ use crate::error::{Error, Result};
 ))]
 pub struct PumpSwapPool {
     /// PDA bump seed.
-    pub bump: u8,
+    /// The program calls this `pool_bump`.
+    pub pool_bump: u8,
     /// Pool index.
     pub index: u16,
     /// Pool creator wallet.
@@ -181,7 +183,7 @@ mod tests {
         let data = make_test_pool_data();
         let pool = PumpSwapPool::from_account_data(&data).unwrap();
 
-        assert_eq!(pool.bump, 255);
+        assert_eq!(pool.pool_bump, 255);
         assert_eq!(pool.index, 42);
         assert_eq!(pool.lp_supply, 1000);
         assert!(!pool.is_mayhem_mode);

@@ -1,332 +1,284 @@
-//! `#[derive(OnchainState)]` — an account struct *is* its on-chain layout.
+//! `#[derive(OnchainState)]` — an account's stored layout.
 //!
-//! The rule this enforces: a struct that models an on-chain account carries the
-//! account's fields, in the account's order, and nothing else. Behaviour hangs
-//! off it in an `impl`, exactly as Anchor programs do. Fields that are not in
-//! the account are the bug class this removes — `PumpSwapPool` grew
-//! `base_reserves`/`quote_reserves` that no decode could fill, so they arrived
-//! through a `set_reserves` mutator callers had to remember, and a zero could
-//! mean either "empty pool" or "nobody called it".
+//! # What this generates, and what it deliberately does not
 //!
-//! The derive walks the field list computing a running byte offset, so the
-//! fields *are* the layout: a field the account does not have shifts every
-//! field after it, and the golden fixture fails immediately.
+//! Field decoding is **not** generated. It comes from borsh, which is what wrote
+//! the bytes: Anchor programs serialize account state with borsh, so a generated
+//! offset walk is a second implementation of the producer's codec — it agrees
+//! until it does not, and nothing says when.
 //!
-//! # The one legitimate difference from chain
+//! That second implementation used to live here, ~400 lines of offset
+//! arithmetic, and it earned its removal: it sized arrays by element *count*
+//! rather than bytes (`[u64; 16]` read as 16), it could not express a nested
+//! struct until composition was bolted on, and it refused `String` and `Vec`
+//! outright. borsh has none of those bugs.
 //!
-//! Accounts grow. A program upgrade appends a field, and old accounts written
-//! before it simply end early — deserializing them with the new layout hits
-//! EOF. That is the only way our struct may diverge from the current on-chain
-//! type, and it is expressed as trailing `Legacy<T>`:
+//! # Accounts get a prefix read, not `try_from_slice`
 //!
-//! ```ignore
-//! #[derive(OnchainState)]
-//! #[state(discriminator = BONDING_CURVE_DISCRIMINATOR)]
-//! pub struct BondingCurve {
-//!     pub virtual_token_reserves: u64,
-//!     pub creator: Pubkey,
-//!     #[state(added_in = "cashback")] pub is_mayhem_mode:   Legacy<bool>,
-//!     #[state(added_in = "cashback")] pub is_cashback_coin: Legacy<bool>,
-//! }
-//! ```
+//! Solana allocates an account at or above its data size, so the tail is
+//! padding: PumpSwap pools arrive at 261, 300 and 301 bytes over one 244-byte
+//! field span. Refusing trailing bytes — right for instruction data, which is
+//! exactly what the sender wrote — would reject the majority of live pools here.
+//! The trait's `borsh_fields` reads a prefix and leaves the remainder.
 //!
-//! `Absent` means **this account predates the field**. It is deliberately not
-//! collapsed to a default: `Absent` and `Present(false)` are different facts,
-//! and a decoder that answers `false` for both has destroyed the distinction
-//! before any caller could act on it.
+//! # So what is left
 //!
-//! `Option<T>` is **rejected** here rather than merely discouraged. Its
-//! combinators (`unwrap_or`, `unwrap_or_default`) are ergonomic paths to
-//! exactly that collapse, and offering the convenient collapse *is* choosing
-//! it. `Legacy<T>` ships no combinators, which leaves `match` as the only
-//! door.
+//! The parts borsh has no opinion about:
 //!
-//! # Guarantees
+//! * the **discriminator check**, which is identity rather than layout, and
+//!   which must live inside the decode — "the registry validates upstream" was
+//!   already false, and a check the caller has to remember is not a check;
+//! * the **golden-fixture test**, emitted so a layout cannot ship unproven. That
+//!   is the gap that let `POOL_ACCOUNT_SIZE = 301` reject most live pools while
+//!   the suite stayed green.
 //!
-//! * **Optional fields must be trailing.** An `Option` before a required field
-//!   is a layout that cannot be parsed; it is a compile error.
-//! * **Version groups are all-or-nothing.** Fields sharing an `added_in` name
-//!   arrived in one upgrade, so an account holding some of their bytes but not
-//!   all is truncated, not an intermediate version — it is rejected rather than
-//!   half-read. A group's fields must also be contiguous.
-//! * **The minimum length is derived**, never transcribed. `REQUIRED_LEN` is
-//!   the discriminator plus every non-optional field, summed at expansion. The
-//!   hand-written equivalent is what rejected the majority of real PumpSwap
-//!   pools (`POOL_ACCOUNT_SIZE = 301` against a true field span of 244).
-
-use std::collections::BTreeMap;
+//! # Version-added fields
+//!
+//! `Legacy<T>` still works, and now through borsh: its impl reads the field if
+//! bytes remain and yields `Absent` at EOF. That is exactly as correct as the
+//! length threshold it replaces — both answer "are there bytes there", and both
+//! are fooled by an old account that was allocated with padding. The equivalence
+//! is pinned by `tests/borsh_agrees_on_accounts.rs` rather than argued.
+//!
+//! What borsh cannot know is which fields shipped *together*. It reads `Legacy`
+//! fields left to right, so an account cut between two fields of one upgrade
+//! decodes as `Present(x), Absent` — a version that never existed, reported as
+//! fact. `#[state(added_in = "name")]` states the grouping and the derive
+//! refuses a partial one, which is the guarantee the offset walk had and would
+//! otherwise have left with it.
 
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{
-    parse_macro_input, Data, DeriveInput, Expr, Fields, GenericArgument, Ident, PathArguments, Type,
-};
-
-struct FieldSpec {
-    ident: Ident,
-    /// Inner type — `T` for a versioned `Option<T>`, the field type otherwise.
-    ty: Type,
-    /// Version group this field was added in; `None` for core fields.
-    added_in: Option<String>,
-    /// Padding to skip *before* this field.
-    skip: usize,
-}
+use syn::{parse_macro_input, DeriveInput, Expr};
 
 pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let name = input.ident.clone();
+    let name = &input.ident;
 
     let mut discriminator: Option<Expr> = None;
     let mut no_discriminator = false;
     let mut fixtures: Vec<String> = Vec::new();
+    let mut idl: Option<(String, String)> = None;
+    let mut unverified: Option<String> = None;
+
     for attr in &input.attrs {
         if !attr.path().is_ident("state") {
             continue;
         }
-        let parsed = attr.parse_nested_meta(|m| {
+        if let Err(e) = attr.parse_nested_meta(|m| {
             if m.path.is_ident("discriminator") {
                 discriminator = Some(m.value()?.parse()?);
             } else if m.path.is_ident("no_discriminator") {
                 no_discriminator = true;
+            } else if m.path.is_ident("unverified") {
+                unverified = Some(m.value()?.parse::<syn::LitStr>()?.value());
             } else if m.path.is_ident("fixtures") {
-                // `fixtures("a.json", "b.json")` — one per real on-chain size
-                // variant. Parsed as a list because a layout that decodes the
-                // newest account can still reject the majority of live ones,
-                // which is exactly what the 301-vs-244 span bug did.
+                // `fixtures("a.json", "b.json")` — one per real on-chain size.
                 let content;
                 syn::parenthesized!(content in m.input);
-                let list = content
+                let parsed = content
                     .parse_terminated(<syn::LitStr as syn::parse::Parse>::parse, syn::Token![,])?;
-                fixtures.extend(list.into_iter().map(|l| l.value()));
+                fixtures.extend(parsed.into_iter().map(|l| l.value()));
             } else {
-                return Err(m.error("expected discriminator = …, no_discriminator, or fixtures(…)"));
+                return Err(m.error(
+                    "expected discriminator = …, no_discriminator, fixtures(…) or \
+                     unverified = …; added_in belongs on the field it was added with",
+                ));
             }
             Ok(())
-        });
-        if let Err(e) = parsed {
+        }) {
             return e.to_compile_error().into();
         }
     }
+
+    // The field list against the program's own account layout. This was the one
+    // layout surface with no such check — instruction accounts, instruction
+    // arguments and event fields all had one — and the drift it hid renamed a
+    // reserve field and dropped a mint.
+    for attr in &input.attrs {
+        if !attr.path().is_ident("idl") {
+            continue;
+        }
+        let (mut prog, mut acct) = (None, None);
+        if let Err(e) = attr.parse_nested_meta(|m| {
+            if m.path.is_ident("program") {
+                prog = Some(m.value()?.parse::<syn::LitStr>()?.value());
+            } else if m.path.is_ident("account") {
+                acct = Some(m.value()?.parse::<syn::LitStr>()?.value());
+            } else {
+                return Err(m.error("expected program = \"…\" and account = \"…\""));
+            }
+            Ok(())
+        }) {
+            return e.to_compile_error().into();
+        }
+        if let (Some(p), Some(a)) = (prog, acct) {
+            idl = Some((p, a));
+        }
+    }
+    // An account layout must be checked against the program's own, or say why
+    // not. This was the last of five layout surfaces with no such check, and the
+    // drift it hid renamed `virtual_quote_reserves` to `virtual_sol_reserves` —
+    // asserting SOL on coins quoted in USDC — and dropped a trailing mint. The
+    // check existed for a day as opt-in, which is the same hole one step later:
+    // a new layout that simply omits the attribute is a layout nobody compares.
+    if idl.is_none() && unverified.as_ref().is_none_or(|r| r.trim().len() < 12) {
+        return syn::Error::new_spanned(
+            name,
+            "an account layout needs #[idl(program = \"…\", account = \"…\")] so its \
+             field names are checked against the program's own, or \
+             #[state(unverified = \"why not\")]. A layout nobody compares to the IDL \
+             is a layout that drifts silently — which is exactly how a reserve field \
+             ended up named for the wrong asset",
+        )
+        .to_compile_error()
+        .into();
+    }
+    if let Some((prog, acct)) = &idl {
+        let state_fields: Vec<crate::idl_check::EventField> = match &input.data {
+            syn::Data::Struct(st) => st
+                .fields
+                .iter()
+                .map(|f| crate::idl_check::EventField {
+                    name: f.ident.as_ref().map(ToString::to_string).unwrap_or_default(),
+                    undeclared: f.attrs.iter().find_map(|a| {
+                        if !a.path().is_ident("idl") {
+                            return None;
+                        }
+                        let mut reason = None;
+                        let _ = a.parse_nested_meta(|m| {
+                            if m.path.is_ident("undeclared") {
+                                reason = Some(m.value()?.parse::<syn::LitStr>()?.value());
+                            }
+                            Ok(())
+                        });
+                        reason
+                    }),
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        if let Err(msg) = crate::idl_check::check_state_fields(prog, acct, &state_fields) {
+            return syn::Error::new_spanned(name, msg).to_compile_error().into();
+        }
+    }
+
     if discriminator.is_some() && no_discriminator {
-        return err(&name, "pick one of discriminator = … or no_discriminator");
+        return syn::Error::new_spanned(name, "pick one of discriminator = … or no_discriminator")
+            .to_compile_error()
+            .into();
     }
     if discriminator.is_none() && !no_discriminator {
-        return err(
-            &name,
-            "declare #[state(discriminator = …)] or #[state(no_discriminator)] — \
-             whether the account carries a prefix is a layout fact, not a default",
-        );
+        return syn::Error::new_spanned(
+            name,
+            "declare #[state(discriminator = …)] — account identity is (owner program, \
+             discriminator, PDA), and `account:PoolState` alone is shared by three programs \
+             in this crate. Use #[state(no_discriminator)] for a nested layout that is never \
+             an account of its own.",
+        )
+        .to_compile_error()
+        .into();
     }
-    // A type with no discriminator is not independently addressable on chain:
-    // it is a layout embedded in something else, so no account of it exists to
-    // capture. Its field list is proven by the fixture of whatever embeds it,
-    // which is where a wrong width actually shows up. Requiring a fixture here
-    // would mean inventing one, and a hand-written fixture proves only that the
-    // struct agrees with itself.
+    // A type with no discriminator is not independently addressable on chain, so
+    // there is no account of it to capture and nothing to pin it against; its
+    // width is proven by the fixture of whatever embeds it.
     if fixtures.is_empty() && !no_discriminator {
-        return err(
-            &name,
+        return syn::Error::new_spanned(
+            name,
             "declare #[state(fixtures(\"path/to.json\", …))] — the field list *is* the byte \
              layout, so it is only as true as the real accounts it decodes. List one fixture \
              per observed on-chain size variant: a layout that decodes the newest account can \
              still reject the majority of live ones",
-        );
+        )
+        .to_compile_error()
+        .into();
     }
 
-    let fields = match &input.data {
-        Data::Struct(s) => match &s.fields {
-            Fields::Named(f) => f.named.clone(),
-            _ => return err(&name, "OnchainState requires named fields"),
-        },
-        _ => return err(&name, "OnchainState applies to structs only"),
-    };
-
-    let mut specs: Vec<FieldSpec> = Vec::new();
-    for field in &fields {
-        let ident = field.ident.clone().expect("named");
-        let mut added_in: Option<String> = None;
-        let mut skip: usize = 0;
-        for attr in &field.attrs {
-            if !attr.path().is_ident("state") {
-                continue;
-            }
-            let parsed = attr.parse_nested_meta(|m| {
-                if m.path.is_ident("added_in") {
-                    added_in = Some(m.value()?.parse::<syn::LitStr>()?.value());
-                } else if m.path.is_ident("skip") {
-                    skip = m.value()?.parse::<syn::LitInt>()?.base10_parse()?;
-                } else {
-                    return Err(m.error("expected added_in = \"…\" or skip = N"));
+    // Fields added together in one program upgrade must arrive together.
+    //
+    // borsh alone cannot know this: it reads `Legacy` fields left to right and
+    // yields `Absent` at EOF, so an account cut between two fields of the same
+    // upgrade decodes as `Present(x), Absent` — a version that never shipped,
+    // reported as fact. The old offset walk refused that, and dropping the
+    // refusal when the walk went away would have been a silent loss. `added_in`
+    // is what states the grouping, so it is checked here rather than documented.
+    let mut groups: Vec<(String, Vec<syn::Ident>)> = Vec::new();
+    if let syn::Data::Struct(st) = &input.data {
+        for field in &st.fields {
+            let Some(ident) = field.ident.clone() else { continue };
+            for attr in &field.attrs {
+                if !attr.path().is_ident("state") {
+                    continue;
                 }
-                Ok(())
-            });
-            if let Err(e) = parsed {
-                return e.to_compile_error().into();
+                let mut group: Option<String> = None;
+                if let Err(e) = attr.parse_nested_meta(|m| {
+                    if m.path.is_ident("added_in") {
+                        let lit: syn::LitStr = m.value()?.parse()?;
+                        group = Some(lit.value());
+                        Ok(())
+                    } else {
+                        Err(m.error("expected added_in = \"upgrade name\""))
+                    }
+                }) {
+                    return e.to_compile_error().into();
+                }
+                if let Some(g) = group {
+                    match groups.iter_mut().find(|(name, _)| *name == g) {
+                        Some((_, members)) => members.push(ident.clone()),
+                        None => groups.push((g, vec![ident.clone()])),
+                    }
+                }
             }
-        }
-
-        let optional_inner = legacy_inner(&field.ty);
-        match (&added_in, optional_inner) {
-            (Some(_), Some(inner)) => specs.push(FieldSpec {
-                ident,
-                ty: inner,
-                added_in,
-                skip,
-            }),
-            (Some(_), None) => {
-                return err(
-                    &ident,
-                    "a version-added field must be Legacy<T> — deliberately not Option<T>, \
-                     whose unwrap_or/unwrap_or_default collapse \"absent\" into a default, \
-                     which is the exact distinction this field exists to keep",
-                )
-            }
-            (None, Some(_)) => {
-                return err(
-                    &ident,
-                    "Legacy<T> without #[state(added_in = \"…\")] — a version-added field must \
-                     say which upgrade added it, so its group is validated all-or-nothing",
-                )
-            }
-            (None, None) => specs.push(FieldSpec {
-                ident,
-                ty: field.ty.clone(),
-                added_in,
-                skip,
-            }),
         }
     }
-
-    // --- optional fields must trail, groups must be contiguous -------------
-    if let Some(first_opt) = specs.iter().position(|s| s.added_in.is_some()) {
-        if let Some(bad) = specs[first_opt..].iter().find(|s| s.added_in.is_none()) {
-            return err(
-                &bad.ident,
-                "a required field cannot follow a version-added one — bytes for an absent \
-                 optional field do not exist, so nothing after it has a known offset",
-            );
-        }
-    }
-    let mut group_runs: Vec<String> = Vec::new();
-    for spec in &specs {
-        if let Some(g) = &spec.added_in {
-            if group_runs.last() != Some(g) {
-                if group_runs.contains(g) {
-                    return err(
-                        &spec.ident,
-                        "fields of one version group must be contiguous — they arrived in a \
-                         single upgrade and are validated as one block",
+    let group_checks: Vec<_> = groups
+        .iter()
+        .filter(|(_, members)| members.len() > 1)
+        .map(|(name, members)| {
+            let n = members.len();
+            quote! {
+                let present = [#(decoded.#members.is_present()),*]
+                    .into_iter()
+                    .filter(|p| *p)
+                    .count();
+                if present != 0 && present != #n {
+                    return Err(
+                        ::solana_protocols::parsing::state::AccountParseError::TruncatedVersion {
+                            group: #name,
+                            have: present,
+                            need: #n,
+                        },
                     );
                 }
-                group_runs.push(g.clone());
             }
-        }
-    }
+        })
+        .collect();
 
-    // --- sizes --------------------------------------------------------------
     let disc_len: usize = if no_discriminator { 0 } else { 8 };
-    let mut required_len: TokenStream2 = quote!(#disc_len);
-    let mut core_reads: Vec<TokenStream2> = Vec::new();
-    for spec in specs.iter().filter(|s| s.added_in.is_none()) {
-        let skip = spec.skip;
-        required_len = quote!((#required_len + #skip));
-        let size = match type_size(&spec.ty) {
-            Some(n) => n,
-            None => return err(&spec.ident, &unsupported(&spec.ty)),
-        };
-        core_reads.push(read_stmt(
-            &spec.ident,
-            &spec.ty,
-            &required_len,
-            &size,
-            false,
-        ));
-        required_len = quote!((#required_len + #size));
-    }
-
-    // --- version groups, in declaration order -------------------------------
-    let mut groups: BTreeMap<usize, (String, Vec<&FieldSpec>)> = BTreeMap::new();
-    for spec in specs.iter().filter(|s| s.added_in.is_some()) {
-        let g = spec.added_in.clone().expect("filtered");
-        let idx = group_runs.iter().position(|x| *x == g).expect("recorded");
-        groups
-            .entry(idx)
-            .or_insert_with(|| (g, Vec::new()))
-            .1
-            .push(spec);
-    }
-
-    let mut group_blocks: Vec<TokenStream2> = Vec::new();
-    let mut cursor = required_len.clone();
-    for (group_name, members) in groups.values() {
-        let start = cursor.clone();
-        let mut reads: Vec<TokenStream2> = Vec::new();
-        let mut nones: Vec<TokenStream2> = Vec::new();
-        let mut off = cursor.clone();
-        for spec in members {
-            let skip = spec.skip;
-            off = quote!((#off + #skip));
-            let size = match type_size(&spec.ty) {
-                Some(n) => n,
-                None => return err(&spec.ident, &unsupported(&spec.ty)),
-            };
-            reads.push(read_stmt(&spec.ident, &spec.ty, &off, &size, true));
-            let id = &spec.ident;
-            nones.push(quote! { #id = ::solana_protocols::parsing::state::Legacy::Absent; });
-            off = quote!((#off + #size));
-        }
-        let end = off.clone();
-        let decls: Vec<TokenStream2> = members
-            .iter()
-            .map(|s| {
-                let (id, ty) = (&s.ident, &s.ty);
-                quote! { let #id: ::solana_protocols::parsing::state::Legacy<#ty>; }
-            })
-            .collect();
-        group_blocks.push(quote! {
-            #(#decls)*
-            if data.len() >= #end {
-                #(#reads)*
-            } else if data.len() > #start {
-                // Some of the group's bytes but not all: a truncated account,
-                // not an older one. Refuse rather than half-read it.
-                return Err(::solana_protocols::parsing::state::AccountParseError::TruncatedVersion {
-                    group: #group_name,
-                    have: data.len() - #start,
-                    need: #end - #start,
-                });
-            } else {
-                #(#nones)*
-            }
-        });
-        cursor = end;
-    }
-
     let disc_check = discriminator.map(|expr| {
         quote! {
             let expected: [u8; 8] = #expr;
+            if data.len() < 8 {
+                return Err(::solana_protocols::parsing::state::AccountParseError::TooShort {
+                    len: data.len(),
+                    need: 8,
+                });
+            }
             if data[..8] != expected {
                 return Err(::solana_protocols::parsing::state::AccountParseError::Discriminator);
             }
         }
     });
 
-    let all_idents: Vec<&Ident> = specs.iter().map(|s| &s.ident).collect();
     let test_mod = quote::format_ident!("__onchain_layout_{}", name.to_string().to_lowercase());
-    // Nested layouts have no fixtures (see above), so they get no
-    // fixture-driven tests either. Their width is still checked — by the
-    // fixture of every account that embeds them.
     let fixture_tests = if fixtures.is_empty() {
         quote!()
     } else {
-        let first_fixture = fixtures[0].clone();
+        let first = fixtures[0].clone();
         quote! {
             /// Every declared size variant decodes, and its pinned fields match.
             ///
-            /// Emitted by the derive, so a layout cannot ship unproven — the
-            /// gap that let `POOL_ACCOUNT_SIZE = 301` reject most live pools
-            /// while the suite stayed green.
+            /// Emitted by the derive, so a layout cannot ship unproven.
             #[test]
             fn onchain_layout_matches_real_accounts() {
                 use ::solana_protocols::parsing::state::OnchainState;
@@ -338,35 +290,50 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 }
             }
 
-            /// One byte short of the declared minimum must be refused, not
-            /// half-read. Pins `REQUIRED_LEN` against the field list itself.
+            /// Truncating an account past its fields must be refused, not
+            /// half-read.
+            ///
+            /// The cut is measured rather than declared: borsh reports how many
+            /// bytes the fields actually consumed, so this pins the real span
+            /// instead of a constant somebody maintained. Cutting inside the
+            /// padding would prove nothing — the fields are all still there.
             #[test]
-            fn one_byte_under_required_len_is_refused() {
+            fn truncating_into_the_fields_is_refused() {
+                use ::borsh::BorshDeserialize;
                 use ::solana_protocols::parsing::state::OnchainState;
-                let fx = crate::test_fixtures::AccountFixture::load(#first_fixture);
-                let short = &fx.data()[..<#name as OnchainState>::REQUIRED_LEN - 1];
-                assert!(<#name as OnchainState>::from_account_data(short).is_err());
+                let fx = crate::test_fixtures::AccountFixture::load(#first);
+                let body = &fx.data()[#disc_len..];
+                let mut cursor = body;
+                <#name as BorshDeserialize>::deserialize(&mut cursor).expect("fixture decodes");
+                let consumed = body.len() - cursor.len();
+                let short = &fx.data()[..#disc_len + consumed - 1];
+                assert!(
+                    <#name as OnchainState>::from_account_data(short).is_err(),
+                    "one byte inside the field span must not decode"
+                );
             }
         }
     };
 
     quote! {
         impl ::solana_protocols::parsing::state::OnchainState for #name {
-            const REQUIRED_LEN: usize = #required_len;
+            /// Bytes the discriminator occupies.
+            ///
+            /// No longer a summed field span: borsh knows the layout and a
+            /// variable-length field has no static size. Kept on the trait for
+            /// callers that ask "how many bytes before the fields start".
+            const REQUIRED_LEN: usize = #disc_len;
 
             fn from_account_data(
                 data: &[u8],
-            ) -> ::core::result::Result<Self, ::solana_protocols::parsing::state::AccountParseError> {
-                if data.len() < Self::REQUIRED_LEN {
-                    return Err(::solana_protocols::parsing::state::AccountParseError::TooShort {
-                        len: data.len(),
-                        need: Self::REQUIRED_LEN,
-                    });
-                }
+            ) -> ::core::result::Result<
+                Self,
+                ::solana_protocols::parsing::state::AccountParseError,
+            > {
                 #disc_check
-                #(#core_reads)*
-                #(#group_blocks)*
-                Ok(Self { #(#all_idents),* })
+                let decoded = Self::borsh_fields(&data[#disc_len..])?;
+                #(#group_checks)*
+                Ok(decoded)
             }
         }
 
@@ -378,154 +345,4 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     }
     .into()
-}
-
-/// `Legacy<T>` → `T`.
-fn legacy_inner(ty: &Type) -> Option<Type> {
-    let Type::Path(p) = ty else { return None };
-    let seg = p.path.segments.last()?;
-    if seg.ident != "Legacy" {
-        return None;
-    }
-    let PathArguments::AngleBracketed(args) = &seg.arguments else {
-        return None;
-    };
-    match args.args.first()? {
-        GenericArgument::Type(inner) => Some(inner.clone()),
-        _ => None,
-    }
-}
-
-/// A field's width, as an expression rather than a number.
-///
-/// Expressions instead of `usize` because a fixed-width layout composes from
-/// fixed-width parts, and one of those parts may be another type: a nested
-/// struct contributes `<T as OnchainState>::REQUIRED_LEN`, which is not known
-/// here. Making every width an expression means nested structs, arrays of
-/// structs and arrays of primitives all fall out of the same rule instead of
-/// each needing a case.
-///
-/// Returns `None` only for genuinely variable-length types (`Vec`, `String`),
-/// which need borsh rather than an offset walk.
-fn type_size(ty: &Type) -> Option<TokenStream2> {
-    if let Type::Array(arr) = ty {
-        let syn::Expr::Lit(syn::ExprLit {
-            lit: syn::Lit::Int(n),
-            ..
-        }) = &arr.len
-        else {
-            return None;
-        };
-        let count: usize = n.base10_parse().ok()?;
-        // Element width times count. This used to return the *count*, which is
-        // right for `[u8; N]` and silently wrong for every other element type —
-        // `[u64; 16]` was sized as 16 bytes rather than 128.
-        let elem = type_size(&arr.elem)?;
-        return Some(quote!((#count * (#elem))));
-    }
-    let bytes: usize = match quote!(#ty).to_string().as_str() {
-        "u8" | "i8" | "bool" => 1,
-        "u16" | "i16" => 2,
-        "u32" | "i32" => 4,
-        "u64" | "i64" => 8,
-        "u128" | "i128" => 16,
-        "Pubkey" | "solana_program :: pubkey :: Pubkey" => 32,
-        // Anything else nameable is treated as a nested fixed-width layout and
-        // must say how wide it is. If it does not implement `OnchainState` the
-        // error lands on the field, naming the type.
-        _ => {
-            return match ty {
-                Type::Path(_) => Some(
-                    quote!(<#ty as ::solana_protocols::parsing::state::OnchainState>::REQUIRED_LEN),
-                ),
-                _ => None,
-            }
-        }
-    };
-    Some(quote!(#bytes))
-}
-
-/// The value expression for one field at `offset`.
-///
-/// Every shape composes from this one reader: a primitive reads its bytes, an
-/// array maps the reader over its elements, and a nested layout delegates to its
-/// own `OnchainState`. Adding a case here is how a new field shape becomes
-/// available to every protocol at once, rather than by hand in each decoder.
-fn read_value(ty: &Type, offset: &TokenStream2) -> Option<TokenStream2> {
-    // `[u8; N]` copies wholesale — the common case, and the only array where a
-    // byte slice already has the right shape.
-    if let Type::Array(arr) = ty {
-        let size = type_size(ty)?;
-        let end = quote!((#offset + #size));
-        let elem_ty = &arr.elem;
-        if quote!(#elem_ty).to_string() == "u8" {
-            return Some(quote! {
-                data[#offset..#end].try_into().expect("length checked above")
-            });
-        }
-        let elem = &arr.elem;
-        let elem_len = type_size(elem)?;
-        let each = read_value(elem, &quote!((#offset + n * #elem_len)))?;
-        return Some(quote! {
-            ::core::array::from_fn(|n| { let _ = n; #each })
-        });
-    }
-
-    let size = type_size(ty)?;
-    let end = quote!((#offset + #size));
-    Some(match quote!(#ty).to_string().as_str() {
-        "u8" => quote!(data[#offset]),
-        "i8" => quote!(data[#offset] as i8),
-        "bool" => quote!(data[#offset] != 0),
-        "Pubkey" | "solana_program :: pubkey :: Pubkey" => quote! {
-            ::solana_program::pubkey::Pubkey::new_from_array(
-                data[#offset..#end].try_into().expect("length checked above"),
-            )
-        },
-        "u16" | "i16" | "u32" | "i32" | "u64" | "i64" | "u128" | "i128" => quote! {
-            <#ty>::from_le_bytes(
-                data[#offset..#end].try_into().expect("length checked above"),
-            )
-        },
-        // A nested fixed-width layout reads itself, so a bug in it surfaces
-        // once rather than in every struct that embeds it.
-        _ => quote! {
-            <#ty as ::solana_protocols::parsing::state::OnchainState>::from_account_data(
-                &data[#offset..#end],
-            )
-            .expect("length checked above")
-        },
-    })
-}
-
-fn read_stmt(
-    ident: &Ident,
-    ty: &Type,
-    offset: &TokenStream2,
-    _size: &TokenStream2,
-    wrap_some: bool,
-) -> TokenStream2 {
-    let raw = read_value(ty, offset).unwrap_or_else(|| quote!(compile_error!("unsupported field")));
-    let value = if wrap_some {
-        quote!(::solana_protocols::parsing::state::Legacy::Present(#raw))
-    } else {
-        raw
-    };
-    if wrap_some {
-        quote! { #ident = #value; }
-    } else {
-        quote! { let #ident = #value; }
-    }
-}
-
-fn unsupported(ty: &Type) -> String {
-    format!(
-        "unsupported field type `{}` — OnchainState reads fixed-width layouts; \
-         a variable-length field (Vec, String) needs borsh, not an offset walk",
-        quote!(#ty)
-    )
-}
-
-fn err<T: quote::ToTokens>(at: &T, msg: &str) -> TokenStream {
-    syn::Error::new_spanned(at, msg).to_compile_error().into()
 }

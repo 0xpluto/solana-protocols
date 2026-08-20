@@ -23,6 +23,7 @@ use crate::traits::InstructionBuilder;
 /// \[7\]=output_vault(writable), \[8\]=input_token_program, \[9\]=output_token_program,
 /// \[10\]=input_token_mint, \[11\]=output_token_mint, \[12\]=observation_state(writable)
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapAccounts {
     /// User wallet (signer).
     #[account(signer, writable)]
@@ -67,7 +68,7 @@ pub struct SwapAccounts {
 
 /// SwapBaseInput instruction parameters.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SWAP_BASE_INPUT_DISCRIMINATOR)]
+#[instruction_data(discriminator = SWAP_BASE_INPUT_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapBaseInputParams {
     /// Input token amount.
     pub amount_in: u64,
@@ -88,7 +89,7 @@ impl SwapBaseInputParams {
 
 /// SwapBaseOutput instruction parameters.
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = SWAP_BASE_OUTPUT_DISCRIMINATOR)]
+#[instruction_data(discriminator = SWAP_BASE_OUTPUT_DISCRIMINATOR, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapBaseOutputParams {
     /// Maximum input tokens (slippage protection).
     pub maximum_amount_in: u64,

@@ -5,6 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
+
+use crate::protocols::OptionBool;
+
+use crate::parsing::accounts::Conditional;
 use solana_protocols_macros::{AccountMetas, InstructionData, OnchainInstruction};
 use solana_sdk::instruction::Instruction;
 
@@ -23,7 +27,12 @@ use crate::traits::InstructionBuilder;
 /// `OnchainInstruction` adds a golden round-trip test against a real sell.
 #[derive(Debug, Clone, AccountMetas, OnchainInstruction)]
 #[idl(program = "pump_amm", instruction = "sell")]
-#[onchain_ix(fixture = "pumpswap/ix_sell.json")]
+#[onchain_ix(fixtures(
+    "pumpswap/ix_sell.json",
+    "pumpswap/ix_sell_n23.json",
+    "pumpswap/ix_sell_n24.json",
+    "pumpswap/ix_sell_n26.json"
+))]
 pub struct SellAccounts {
     /// Pool state account.
     #[account(writable)]
@@ -88,12 +97,46 @@ pub struct SellAccounts {
     /// Fee program.
     #[account]
     pub fee_program: Pubkey,
+
+    /// The quote-token account of that accumulator.
+    #[account(resolved = spl_associated_token_account::get_associated_token_address(
+        &solana_program::pubkey::Pubkey::find_program_address(
+            &[b"user_volume_accumulator", user.as_ref()],
+            &super::super::constants::PROGRAM_ID,
+        ).0,
+        &quote_mint,
+    ))]
+    pub appended_quote_volume_accumulator: Conditional,
+    /// The cashback volume accumulator for this user.
+    ///
+    /// `PDA(pumpswap, ["user_volume_accumulator", user])`. Unlike `buy`, sell
+    /// declares no slot for it, so on a cashback coin it can only arrive
+    /// appended — which is what pump's cashback docs describe.
+    #[account(resolved = solana_program::pubkey::Pubkey::find_program_address(
+        &[b"user_volume_accumulator", user.as_ref()],
+        &super::super::constants::PROGRAM_ID,
+    ).0)]
+    pub appended_user_volume_accumulator: Conditional,
+    /// Fee destinations from the `pump_fees` global roster.
+    #[account(
+        remaining,
+        reason = "the pump_fees BuybackVault roster: eight exist on chain and a \
+                  caller credits any subset, so which ones appear is caller policy \
+                  rather than layout, and none is derivable from this instruction"
+    )]
+    pub buyback_vaults: Vec<Pubkey>,
+
 }
 
 impl SellAccounts {
     /// Create sell accounts from pool keys and user wallet.
     #[must_use]
     pub fn from_keys(keys: &PumpSwapKeys, user: &Pubkey) -> Self {
+        let uva = solana_program::pubkey::Pubkey::find_program_address(
+            &[b"user_volume_accumulator", user.as_ref()],
+            &super::super::constants::PROGRAM_ID,
+        )
+        .0;
         SellAccounts {
             pool: keys.pool,
             user: *user,
@@ -116,6 +159,18 @@ impl SellAccounts {
             coin_creator_vault_authority: keys.creator_vault_authority,
             fee_config: FEE_CONFIG,
             fee_program: FEE_PROGRAM,
+            // Appended: the cashback accumulator and its quote account. Sell
+            // declares no slot for the accumulator, so it can only arrive here.
+            appended_user_volume_accumulator:
+                crate::parsing::accounts::Conditional::Present(uva),
+            appended_quote_volume_accumulator:
+                crate::parsing::accounts::Conditional::Present(
+                    spl_associated_token_account::get_associated_token_address(
+                        &uva,
+                        &keys.quote_mint,
+                    ),
+                ),
+            buyback_vaults: Vec::new(),
         }
     }
 }
@@ -132,12 +187,30 @@ impl SellAccounts {
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = SELL_DISCRIMINATOR)]
+#[instruction_data(discriminator = SELL_DISCRIMINATOR, fixtures(
+    "pumpswap/ix_sell.json",
+    "pumpswap/ix_sell_n23.json",
+    "pumpswap/ix_sell_n24.json",
+    "pumpswap/ix_sell_n26.json"
+), idl(program = "pump_amm", instruction = "sell"))]
 pub struct SellParams {
     /// Base tokens to sell.
     pub base_amount_in: u64,
     /// Minimum quote (SOL) to receive.
     pub min_quote_amount_out: u64,
+    /// Trailing `track_volume` that no IDL declares.
+    ///
+    /// `pump_amm.json` lists two arguments and senders emit a third — a single
+    /// `[1]` on `ix_sell_n24` and `ix_sell_n26`, the canonical one-byte form.
+    /// Two other captured sells send nothing.
+    ///
+    /// Note the width differs from pumpfun's `sell`, which sends `[1, 1]` for
+    /// the same flag. That is why this is
+    /// [`OptionBool`](crate::protocols::OptionBool) and not a `bool`: the
+    /// encodings are not interchangeable between the two programs, and a type
+    /// that fixed the width would decode one of them wrongly.
+    #[idl(undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures")]
+    pub track_volume: OptionBool,
 }
 
 impl SellParams {
@@ -147,6 +220,9 @@ impl SellParams {
         Self {
             base_amount_in,
             min_quote_amount_out,
+            // We send no flag: opting a trade into volume tracking is the
+            // caller's decision, and absent is what most captured sells carry.
+            track_volume: OptionBool::None,
         }
     }
 
@@ -163,6 +239,7 @@ impl SellParams {
         SellParams {
             base_amount_in: tokens_in,
             min_quote_amount_out: min_sol,
+            track_volume: OptionBool::None,
         }
     }
 }
@@ -258,7 +335,8 @@ mod tests {
         let ix = SellBuilder::build(&keys, &user, 1_000_000, 400_000_000);
 
         assert_eq!(ix.program_id, PROGRAM_ID);
-        assert_eq!(ix.accounts.len(), 21);
+        // 21 declared + the appended cashback accounts the builder emits.
+        assert_eq!(ix.accounts.len(), SellAccounts::ACCOUNT_COUNT + 2);
         assert!(!ix.data.is_empty());
 
         let user_account = ix.accounts.iter().find(|a| a.pubkey == user);

@@ -43,6 +43,19 @@ pub enum IngestError {
     PrimaryHandler(#[from] HandlerError),
 }
 
+impl IngestError {
+    /// Every label [`reason`](Self::reason) can return.
+    pub const REASONS: [&'static str; 3] = HandlerError::REASONS;
+
+    /// Stable label for counters, delegating to the handler error it wraps.
+    #[must_use]
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Self::PrimaryHandler(e) => e.reason(),
+        }
+    }
+}
+
 pub struct Ingest<C: 'static, F: AccountFetcher> {
     registry: HandlerRegistry<C>,
     cache: C,

@@ -16,10 +16,11 @@ mod types;
 pub use extract::{
     child_event, corroborate, extract_failure_tally, extract_failures, extract_transaction,
     report_extract_failure, ExtractContext, ExtractError, ExtractFn, Extracted, ExtractorRegistry,
-    ExtractsCreation, ExtractsCreatorFee, ExtractsMigration, ExtractsSwap, NoContext,
+    ExtractsCreation, ExtractsCreatorFee, optional_child_event, ExtractsLiquidity, ExtractsMigration, ExtractsSwap, NoContext,
     ProtocolExtractor, TransactionHeader,
 };
 pub use types::{
+    Liquidity,
     ChainEvent, CreatorFee, CreatorPayout, CurveState, Migration, ParsedTransaction, Swap,
     TokenBalanceChange, TokenBalanceEntry, TokenCreation, TxError, TxOutcome,
 };

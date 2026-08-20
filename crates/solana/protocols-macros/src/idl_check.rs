@@ -143,7 +143,21 @@ pub fn check_accounts(program: &str, instruction: &str, fields: &[String]) -> Re
 /// # Errors
 ///
 /// The IDL is absent, unparseable, or declares no such event type.
-pub fn idl_event_fields(program: &str, event: &str) -> Result<Vec<String>, String> {
+/// The field names a declared type has in an IDL, in order.
+///
+/// Anchor keeps both event layouts and account layouts under `types`; the
+/// `events` and `accounts` sections only name them and carry discriminators. So
+/// one lookup serves both, and the only thing that differs is what a mismatch
+/// should say.
+///
+/// # Errors
+///
+/// The IDL is absent, unparseable, or declares no such type.
+pub fn idl_type_fields(program: &str, name: &str) -> Result<Vec<String>, String> {
+    idl_type_fields_inner(program, name)
+}
+
+fn idl_type_fields_inner(program: &str, event: &str) -> Result<Vec<String>, String> {
     let path = idl_path(program);
     let text = std::fs::read_to_string(&path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
@@ -203,7 +217,38 @@ pub struct EventField {
 /// Any disagreement in name or order among the non-exempt fields, or an
 /// exemption reason that is empty.
 pub fn check_event_fields(program: &str, event: &str, fields: &[EventField]) -> Result<(), String> {
-    let expected = idl_event_fields(program, event)?;
+    check_type_fields(program, "event", event, fields)
+}
+
+/// Compare an on-chain **account** struct's fields to the IDL's, in order.
+///
+/// The fifth and last layout surface to get this check. Instruction accounts,
+/// instruction arguments and event fields were all compared to the IDL;
+/// account state was not, and the drift that hid there was expensive: pumpfun's
+/// `BondingCurve` renamed the program's `virtual_quote_reserves` to
+/// `virtual_sol_reserves` and dropped the trailing `quote_mint` entirely. Since
+/// pumpfun v2 supports non-SOL quote mints, every reserve on a USDC-quoted coin
+/// was recorded under a name asserting it was SOL, and nothing failed.
+///
+/// # Errors
+///
+/// Any disagreement in name or order among the non-exempt fields.
+pub fn check_state_fields(
+    program: &str,
+    account: &str,
+    fields: &[EventField],
+) -> Result<(), String> {
+    check_type_fields(program, "account", account, fields)
+}
+
+fn check_type_fields(
+    program: &str,
+    kind: &str,
+    event: &str,
+    fields: &[EventField],
+) -> Result<(), String> {
+    let _ = kind;
+    let expected = idl_type_fields(program, event)?;
     let mut want = expected.iter();
 
     for f in fields {
@@ -237,6 +282,101 @@ pub fn check_event_fields(program: &str, event: &str, fields: &[EventField]) -> 
                 ));
             }
         }
+    }
+    Ok(())
+}
+
+/// The argument names an IDL declares for `instruction`, in order.
+///
+/// # Errors
+///
+/// The IDL is absent, unparseable, or does not declare the instruction.
+pub fn idl_args(program: &str, instruction: &str) -> Result<Vec<String>, String> {
+    let path = idl_path(program);
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let idl: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", path.display()))?;
+    let ix = idl
+        .get("instructions")
+        .and_then(|i| i.as_array())
+        .ok_or_else(|| format!("{program}.json has no `instructions` array"))?
+        .iter()
+        .find(|i| i.get("name").and_then(|n| n.as_str()) == Some(instruction))
+        .ok_or_else(|| format!("{program}.json declares no instruction `{instruction}`"))?;
+    // No `args` key means the instruction takes none, which is a real answer.
+    let Some(args) = ix.get("args").and_then(|a| a.as_array()) else {
+        return Ok(Vec::new());
+    };
+    args.iter()
+        .map(|a| {
+            a.get("name")
+                .and_then(|n| n.as_str())
+                .map(ToString::to_string)
+                .ok_or_else(|| format!("`{instruction}` has an unnamed argument"))
+        })
+        .collect()
+}
+
+/// Compare a params struct's field names to the IDL's argument names, in order.
+///
+/// The counterpart of [`check_accounts`] for the arguments, which had no check
+/// at all: `CreateParams` modelled three of `create`'s four declared arguments
+/// for its whole life, silently discarding the `creator` that seeds the coin's
+/// fee vault. Nothing caught it — the accounts check covers accounts, the event
+/// check covers events, and the coverage meter only asks whether the bytes
+/// *parse*, which a decoder that stops early does.
+///
+/// # Errors
+///
+/// Any disagreement in order or name, or a field past the IDL's list without a
+/// stated reason.
+pub fn check_args(
+    program: &str,
+    instruction: &str,
+    fields: &[EventField],
+) -> Result<(), String> {
+    let expected = idl_args(program, instruction)?;
+    let mut want = expected.iter();
+    for f in fields {
+        if let Some(reason) = &f.undeclared {
+            if reason.trim().is_empty() {
+                return Err(format!(
+                    "argument `{}` of `{instruction}` is marked undeclared with no \
+                     reason; say what it is, or `unknown` if that is the honest answer",
+                    f.name
+                ));
+            }
+            continue;
+        }
+        match want.next() {
+            Some(w) if *w == f.name => {}
+            Some(w) => {
+                return Err(format!(
+                    "`{instruction}` in {program}.json declares argument `{w}` where \
+                     this struct has `{}` — if the program takes it but the IDL does \
+                     not, mark it `#[idl(undeclared = \"...\")]`",
+                    f.name
+                ));
+            }
+            None => {
+                return Err(format!(
+                    "`{instruction}` has {} arguments in {program}.json; this struct \
+                     declares `{}` past the end — mark it \
+                     `#[idl(undeclared = \"...\")]` if the program takes it anyway",
+                    expected.len(),
+                    f.name
+                ));
+            }
+        }
+    }
+    if let Some(missing) = want.next() {
+        return Err(format!(
+            "`{instruction}` declares argument `{missing}` in {program}.json and this \
+             struct does not model it. An argument we do not decode is one we discard: \
+             `create`'s `creator` seeds the coin's fee vault and was dropped on every \
+             launch we ever parsed"
+        ));
     }
     Ok(())
 }

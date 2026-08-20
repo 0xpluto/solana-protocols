@@ -20,7 +20,7 @@ use crate::traits::InstructionBuilder;
 ///
 /// Uses 1-byte instruction index (0x09).
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = [SWAP_BASE_IN_IX], discriminator_size = 1)]
+#[instruction_data(discriminator = [SWAP_BASE_IN_IX], discriminator_size = 1, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapBaseInParams {
     /// Amount of tokens to swap in.
     pub amount_in: u64,
@@ -59,6 +59,7 @@ impl SwapBaseInParams {
 ///
 /// Account order matches the on-chain program expectation.
 #[derive(Debug, Clone, AccountMetas)]
+#[accounts(unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have")]
 pub struct SwapBaseInAccounts {
     /// Token program.
     #[account]
@@ -190,7 +191,7 @@ impl SwapBaseInAccounts {
 ///
 /// Uses 1-byte instruction index (0x0B).
 #[derive(Debug, Clone, borsh::BorshDeserialize, borsh::BorshSerialize, InstructionData)]
-#[instruction_data(discriminator = [SWAP_BASE_OUT_IX], discriminator_size = 1)]
+#[instruction_data(discriminator = [SWAP_BASE_OUT_IX], discriminator_size = 1, unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; pinning params here would claim a verification the rest of the vertical does not have")]
 pub struct SwapBaseOutParams {
     /// Maximum amount of tokens to swap in.
     pub max_amount_in: u64,

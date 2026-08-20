@@ -1,0 +1,91 @@
+{
+ "program": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+ "instruction": "sell",
+ "signature": "3piPEzbLX1d1VTfFeyM5pvb3ozYCkVLxejixBEHJjWbridSpd3MoGK53m4QFPYJmEt58AyM2Y1gNVkAK6iHGnQmV",
+ "slot": 440352193,
+ "top_level": false,
+ "discriminator": [
+  51,
+  230,
+  133,
+  164,
+  1,
+  127,
+  131,
+  173
+ ],
+ "accounts": [
+  {
+   "pubkey": "7i1fUVBXBxeozSN5qvHUq3ojrx9faneaxNCK1r4X32pE"
+  },
+  {
+   "pubkey": "Bwrf3wRWibpNcoV9aFTQVrC85WZWVBqW9mRwB7w6JHgF"
+  },
+  {
+   "pubkey": "ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw"
+  },
+  {
+   "pubkey": "So11111111111111111111111111111111111111112"
+  },
+  {
+   "pubkey": "7Vjsy21QBHrDtUHj5X2a7EUYd4HP7oT4FsQvU98hKbYb"
+  },
+  {
+   "pubkey": "DJY3cv5YrAhRW8B3UzX2G4hLzAVYWiVr7VMBFVY6Ne2c"
+  },
+  {
+   "pubkey": "2crP2AgEpmZMq2kUWHgbXc32Mt3Vfkrp6zbJZEj7RdfJ"
+  },
+  {
+   "pubkey": "c1PuX87rMuH2R9MTsCsEH9EfKdDrvY7GhqGQFyHqGJj"
+  },
+  {
+   "pubkey": "5S3Qm4QKHN7T3jBYFLDhqgWnZwE8tcRgpRdgpmzPet1F"
+  },
+  {
+   "pubkey": "62qc2CNXwrYqQScmEdiZFFAnJR262PxWEuNQtxfafNgV"
+  },
+  {
+   "pubkey": "76mwVf2GCZ5uXuLZQTxSYXCi5X5XmNmLJhBZRtQzqkft"
+  },
+  {
+   "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  },
+  {
+   "pubkey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  },
+  {
+   "pubkey": "GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"
+  },
+  {
+   "pubkey": "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  },
+  {
+   "pubkey": "2NQGMU1bn7TjsiWkX93vJNEwRuHJPRpwFewy6wzJ5for"
+  },
+  {
+   "pubkey": "8N3GDaZ2iwN65oxVatKTLPNooAVUJTbfiVJ1ahyqwjSk"
+  },
+  {
+   "pubkey": "5PHirr8joyTMp9JMm6nW7hNDVyEYdkzDqazxPD7RaTjx"
+  },
+  {
+   "pubkey": "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ"
+  },
+  {
+   "pubkey": "A7hAgCzFw14fejgCp387JUJRMNyz4j89JKnhtKU8piqW"
+  },
+  {
+   "pubkey": "Cu1uW8u6LDjkQuGfoUmhpB5gdwEWaDwR883MvBX1TawB"
+  }
+ ],
+ "data_b64": "M+aFpAF/g60yR408AAAAALwutZugAwAA",
+ "declared_accounts": 21,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}

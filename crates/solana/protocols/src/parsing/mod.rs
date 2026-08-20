@@ -40,6 +40,8 @@
 //! }
 //! ```
 
+pub mod accounts;
+pub mod ix_fixture;
 pub mod anchor;
 mod classify;
 pub mod event;
@@ -52,6 +54,7 @@ pub mod state;
 mod traits;
 
 // Layer 1: Generic parsing
+pub use accounts::{Conditional, RemainingSequence};
 pub use event::UndeclaredTail;
 pub use instruction::{
     attribution_stats, parse_instructions, AttributionStats, ParsedInstruction,
@@ -68,6 +71,7 @@ pub use registry::{
 };
 pub use source::{SourceError, TokenBalanceChange, TransactionMeta, TransactionSource};
 pub use traits::{
+    InstructionParams,
     FromAccountKeys, FromInstructionData, FromLogData, NoParams, VerifiedInstruction,
 };
 

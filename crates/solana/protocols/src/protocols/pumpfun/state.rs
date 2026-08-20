@@ -28,7 +28,7 @@
 
 use solana_program::pubkey::Pubkey;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 use solana_protocols_macros::OnchainState;
 
@@ -38,19 +38,27 @@ use super::constants::{BONDING_CURVE_DISCRIMINATOR, SOL_DECIMALS, TOKEN_DECIMALS
 
 /// On-chain Pump.fun bonding curve account state.
 ///
-/// The field list *is* the layout — `#[derive(OnchainState)]` walks it to
+/// The field list *is* the layout — `#[derive(borsh::BorshDeserialize, OnchainState)]` walks it to
 /// generate the parse and to derive [`REQUIRED_LEN`], so no size constant is
 /// transcribed and no field the account lacks can be added.
 ///
 /// [`REQUIRED_LEN`]: crate::parsing::state::OnchainState::REQUIRED_LEN
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, OnchainState)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, borsh::BorshDeserialize, OnchainState)]
+#[idl(program = "pump", account = "BondingCurve")]
 #[state(discriminator = BONDING_CURVE_DISCRIMINATOR)]
 #[state(fixtures("pumpfun/bonding_curve_150.json"))]
 pub struct BondingCurve {
     pub virtual_token_reserves: u64,
-    pub virtual_sol_reserves: u64,
+    /// The program calls this `virtual_quote_reserves`, and the distinction is
+    /// load-bearing: pumpfun v2 launches against non-SOL quote mints (a captured
+    /// `create_v2` used USDC), so this is quote units, not lamports. It was named
+    /// `virtual_sol_reserves` here, which asserted SOL on every coin.
+    pub virtual_quote_reserves: u64,
     pub real_token_reserves: u64,
-    pub real_sol_reserves: u64,
+    /// Quote units, not lamports. See [`virtual_quote_reserves`].
+    ///
+    /// [`virtual_quote_reserves`]: Self::virtual_quote_reserves
+    pub real_quote_reserves: u64,
     pub token_total_supply: u64,
     pub complete: bool,
     pub creator: Pubkey,
@@ -89,17 +97,7 @@ impl BondingCurve {
     ///
     /// [`OnchainState`]: crate::parsing::state::OnchainState
     pub fn from_account_data(data: &[u8]) -> Result<Self> {
-        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(
-            |e| match e {
-                crate::parsing::state::AccountParseError::TooShort { len, need } => {
-                    Error::AccountDataTooShort {
-                        expected: need,
-                        actual: len,
-                    }
-                }
-                other => Error::invalid_account_data(other.to_string()),
-            },
-        )
+        <Self as crate::parsing::state::OnchainState>::from_account_data(data).map_err(Into::into)
     }
 
     /// Current spot price in SOL per token (UI units).
@@ -108,7 +106,7 @@ impl BondingCurve {
         if self.virtual_token_reserves == 0 {
             return 0.0;
         }
-        let sol_ui = self.virtual_sol_reserves as f64 / 10f64.powi(SOL_DECIMALS as i32);
+        let sol_ui = self.virtual_quote_reserves as f64 / 10f64.powi(SOL_DECIMALS as i32);
         let token_ui = self.virtual_token_reserves as f64 / 10f64.powi(TOKEN_DECIMALS as i32);
         sol_ui / token_ui
     }
@@ -138,9 +136,9 @@ mod tests {
     fn sample() -> BondingCurve {
         BondingCurve {
             virtual_token_reserves: 1_000_000_000_000_000,
-            virtual_sol_reserves: 30_000_000_000,
+            virtual_quote_reserves: 30_000_000_000,
             real_token_reserves: 800_000_000_000_000,
-            real_sol_reserves: 0,
+            real_quote_reserves: 0,
             token_total_supply: 1_000_000_000_000_000,
             complete: false,
             creator: Pubkey::new_unique(),
@@ -154,9 +152,9 @@ mod tests {
         let mut data = Vec::with_capacity(81);
         data.extend_from_slice(&BONDING_CURVE_DISCRIMINATOR);
         data.extend_from_slice(&curve.virtual_token_reserves.to_le_bytes());
-        data.extend_from_slice(&curve.virtual_sol_reserves.to_le_bytes());
+        data.extend_from_slice(&curve.virtual_quote_reserves.to_le_bytes());
         data.extend_from_slice(&curve.real_token_reserves.to_le_bytes());
-        data.extend_from_slice(&curve.real_sol_reserves.to_le_bytes());
+        data.extend_from_slice(&curve.real_quote_reserves.to_le_bytes());
         data.extend_from_slice(&curve.token_total_supply.to_le_bytes());
         data.push(if curve.complete { 1 } else { 0 });
         data.extend_from_slice(curve.creator.as_ref());
@@ -231,33 +229,34 @@ mod tests {
         }
     }
 
+    /// The core layout's width is proven by where decoding flips, not asserted.
+    ///
+    /// `BONDING_CURVE_ACCOUNT_SIZE` was hand-summed (`8+8+8+8+8+8+1+32`), and a
+    /// hand-summed size is the class that made `POOL_ACCOUNT_SIZE = 301` reject
+    /// the majority of live PumpSwap pools while the suite stayed green. borsh
+    /// decides the real boundary; this pins the constant against it. One byte
+    /// short must fail — the cashback flags are `Legacy` and may be absent, but
+    /// nothing before them may be.
     #[test]
-    fn from_account_data_rejects_too_short_inputs() {
-        // Any size below the 81-byte core is invalid — we can't read
-        // the required reserves + creator fields.
-        for len in [0usize, 10, 40, 80] {
-            let err = BondingCurve::from_account_data(&vec![0u8; len]).unwrap_err();
+    fn the_core_layout_boundary_is_where_borsh_says_it_is() {
+        let core = super::super::constants::BONDING_CURVE_ACCOUNT_SIZE;
+        let with_body = |n: usize| {
+            let mut data = BONDING_CURVE_DISCRIMINATOR.to_vec();
+            data.resize(n, 0);
+            data
+        };
+        assert!(
+            BondingCurve::from_account_data(&with_body(core)).is_ok(),
+            "the core layout must decode with both flags absent"
+        );
+        for len in [0usize, 10, 40, 80, core - 1] {
+            let mut data = with_body(len);
+            data.truncate(len);
             assert!(
-                matches!(err, Error::AccountDataTooShort { .. }),
-                "expected AccountDataTooShort at len={len}, got {err:?}"
+                BondingCurve::from_account_data(&data).is_err(),
+                "{len} bytes is inside the core fields and must be refused"
             );
         }
-    }
-
-    /// The derived `REQUIRED_LEN` must equal the constant it replaced.
-    ///
-    /// `BONDING_CURVE_ACCOUNT_SIZE` was hand-summed (`8+8+8+8+8+8+1+32`). The
-    /// derive computes the same figure from the field types, which is the
-    /// point: a transcribed size is what made `POOL_ACCOUNT_SIZE = 301` reject
-    /// the majority of real PumpSwap pools. Validated against the known-good
-    /// value rather than trusted.
-    #[test]
-    fn derived_required_len_matches_the_hand_written_constant() {
-        use crate::parsing::state::OnchainState;
-        assert_eq!(
-            <BondingCurve as OnchainState>::REQUIRED_LEN,
-            super::super::constants::BONDING_CURVE_ACCOUNT_SIZE,
-        );
     }
 
     /// One byte of the cashback group but not both is truncation, not an

@@ -26,16 +26,19 @@
 
 use solana_program::pubkey::Pubkey;
 
-use super::events::{BuyEvent, CollectCoinCreatorFeeEvent, SellEvent};
+use super::events::{
+    BuyEvent, CollectCoinCreatorFeeEvent, CreatePoolEvent, DepositEvent, SellEvent,
+    WithdrawEvent,
+};
 use super::{
     BuyAccounts, BuyExactQuoteInParams, BuyParams, CollectCoinCreatorFeeAccounts,
-    CreatePoolAccounts, CreatePoolParams, PumpSwapInstruction, SellAccounts, SellParams,
-    PROGRAM_ID as PUMPSWAP_PROGRAM,
+    CreatePoolAccounts, CreatePoolParams, DepositAccounts, DepositParams, PumpSwapInstruction,
+    SellAccounts, SellParams, WithdrawAccounts, WithdrawParams, PROGRAM_ID as PUMPSWAP_PROGRAM,
 };
 use crate::chain::{
     child_event, corroborate, report_extract_failure, ChainEvent, CreatorFee, CreatorPayout,
-    CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreatorFee, ExtractsMigration,
-    ExtractsSwap, Migration, ProtocolExtractor, Swap,
+    CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreatorFee, ExtractsLiquidity,
+    ExtractsMigration, ExtractsSwap, Liquidity, Migration, ProtocolExtractor, Swap,
 };
 use crate::parsing::{FromAccountKeys, ParsedInstruction};
 use crate::protocols::meteora_damm_v2::constants::ANCHOR_EVENT_DISCRIMINATOR;
@@ -88,21 +91,24 @@ impl PumpSwapExtractor {
             PumpSwapInstruction::Buy(p) => swap_via(p, ix, all, ctx),
             PumpSwapInstruction::BuyExactQuoteIn(p) => swap_via(p, ix, all, ctx),
             PumpSwapInstruction::Sell(p) => swap_via(p, ix, all, ctx),
-            PumpSwapInstruction::CreatePool(p) => Ok(Some(ChainEvent::Migration(p.migration(ix)?))),
+            PumpSwapInstruction::CreatePool(p) => {
+                let ev = child_event::<CreatePoolEvent>(ix, all, &PUMPSWAP_PROGRAM)?;
+                Ok(Some(ChainEvent::Migration(p.migration(&ev, ix)?)))
+            }
             PumpSwapInstruction::CollectCoinCreatorFee(p) => {
                 let ev = child_event::<CollectCoinCreatorFeeEvent>(ix, all, &PUMPSWAP_PROGRAM)?;
                 Ok(Some(ChainEvent::CreatorFee(p.creator_fee(&ev, ix)?)))
             }
-            // Real liquidity events we decode and do not yet model. An error
-            // rather than a quiet `None`, so they are counted alongside every
-            // other gap instead of vanishing — which is how they get
-            // prioritised.
-            PumpSwapInstruction::Deposit(_) => Err(ExtractError::Unmodelled {
-                instruction: "deposit",
-            }),
-            PumpSwapInstruction::Withdraw(_) => Err(ExtractError::Unmodelled {
-                instruction: "withdraw",
-            }),
+            // Liquidity in and out. Amounts come from the event: the declared
+            // arguments are `max_*_in` / `min_*_out` bounds, never what moved.
+            PumpSwapInstruction::Deposit(p) => {
+                let ev = child_event::<DepositEvent>(ix, all, &PUMPSWAP_PROGRAM)?;
+                Ok(Some(ChainEvent::Liquidity(p.liquidity(&ev, ix)?)))
+            }
+            PumpSwapInstruction::Withdraw(p) => {
+                let ev = child_event::<WithdrawEvent>(ix, all, &PUMPSWAP_PROGRAM)?;
+                Ok(Some(ChainEvent::Liquidity(p.liquidity(&ev, ix)?)))
+            }
         }
     }
 }
@@ -136,6 +142,8 @@ fn buy_swap(
     corroborate("pool", &event.pool, &a.pool)?;
 
     Ok(Swap {
+        // PumpSwap pools have no bonding curve to fill.
+        completed_curve: false,
         track_volume,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::PumpSwap,
@@ -206,6 +214,8 @@ impl ExtractsSwap for SellParams {
         Ok(Swap {
             // No such argument on this instruction.
             track_volume: crate::protocols::OptionBool::None,
+            // PumpSwap pools have no bonding curve to fill.
+            completed_curve: false,
             instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
             protocol: Protocol::PumpSwap,
             pool: a.pool,
@@ -230,26 +240,95 @@ impl ExtractsSwap for SellParams {
 // Migration and creator fees
 // ─────────────────────────────────────────────────────────────────────────────
 
+impl ExtractsLiquidity for DepositParams {
+    type Event = DepositEvent;
+
+    fn liquidity(
+        &self,
+        event: &DepositEvent,
+        ix: &ParsedInstruction,
+    ) -> Result<Liquidity, ExtractError> {
+        let a = DepositAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "DepositAccounts",
+                source,
+            }
+        })?;
+        corroborate("pool", &event.pool, &a.pool)?;
+        Ok(Liquidity {
+            protocol: Protocol::PumpSwap,
+            pool: a.pool,
+            provider: event.user,
+            // Positive: liquidity entering the pool.
+            base_delta: i128::from(event.base_amount_in),
+            quote_delta: i128::from(event.quote_amount_in),
+            lp_token_amount: event.lp_token_amount_out,
+            pool_base_reserves: event.pool_base_token_reserves,
+            pool_quote_reserves: event.pool_quote_token_reserves,
+        })
+    }
+}
+
+impl ExtractsLiquidity for WithdrawParams {
+    type Event = WithdrawEvent;
+
+    fn liquidity(
+        &self,
+        event: &WithdrawEvent,
+        ix: &ParsedInstruction,
+    ) -> Result<Liquidity, ExtractError> {
+        let a = WithdrawAccounts::from_account_keys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "WithdrawAccounts",
+                source,
+            }
+        })?;
+        corroborate("pool", &event.pool, &a.pool)?;
+        Ok(Liquidity {
+            protocol: Protocol::PumpSwap,
+            pool: a.pool,
+            provider: event.user,
+            // Negated: the same fact with the opposite sign, so a consumer
+            // summing deltas gets net flow without branching on direction.
+            base_delta: -i128::from(event.base_amount_out),
+            quote_delta: -i128::from(event.quote_amount_out),
+            lp_token_amount: event.lp_token_amount_in,
+            pool_base_reserves: event.pool_base_token_reserves,
+            pool_quote_reserves: event.pool_quote_token_reserves,
+        })
+    }
+}
+
 impl ExtractsMigration for CreatePoolParams {
-    fn migration(&self, ix: &ParsedInstruction) -> Result<Migration, ExtractError> {
+    type Event = CreatePoolEvent;
+
+    fn migration(
+        &self,
+        event: &CreatePoolEvent,
+        ix: &ParsedInstruction,
+    ) -> Result<Migration, ExtractError> {
         let a = CreatePoolAccounts::from_account_keys(&ix.accounts).map_err(|source| {
             ExtractError::AccountLayout {
                 expected: "CreatePoolAccounts",
                 source,
             }
         })?;
-        // The source curve and the migrated amounts are not in this
-        // instruction. They are recorded as unknown rather than guessed;
-        // `docs/` tracks reading them from `CreatePoolEvent`, which is not
-        // decoded yet.
         Ok(Migration {
             from_protocol: Protocol::Pumpfun,
             to_protocol: Protocol::PumpSwap,
             mint: a.base_mint,
-            from_pool: Pubkey::default(),
+            // The bonding curve this graduated from, derived from the mint. It
+            // used to be `Pubkey::default()` under a comment saying the value
+            // was "recorded as unknown rather than guessed" — but the default
+            // pubkey is the system program, which is an answer, not an absence.
+            from_pool: crate::protocols::pumpfun::derive_bonding_curve_pda(&a.base_mint),
             to_pool: a.pool,
-            migrated_sol: 0,
-            migrated_tokens: 0,
+            // From the event, not the arguments. Both were hardcoded `0` under a
+            // comment claiming they were "recorded as unknown", so every
+            // graduation reported zero SOL migrated — a number a consumer will
+            // happily chart.
+            migrated_sol: event.quote_amount_in,
+            migrated_tokens: event.base_amount_in,
         })
     }
 }

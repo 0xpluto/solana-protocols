@@ -25,7 +25,10 @@ use crate::protocols::OptionBool;
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = BUY_EXACT_SOL_IN_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_EXACT_SOL_IN_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_buy_exact_sol_in_n18.json",
+    "pumpfun/ix_buy_exact_sol_in_n19.json"
+), idl(program = "pump", instruction = "buy_exact_sol_in"))]
 pub struct BuyExactSolInParams {
     /// SOL the trader spends — the pinned side.
     pub spendable_sol_in: u64,

@@ -36,13 +36,18 @@ use crate::protocols::OptionBool;
     borsh::BorshSerialize,
     InstructionData,
 )]
-#[instruction_data(discriminator = BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR)]
+#[instruction_data(discriminator = BUY_EXACT_QUOTE_IN_V2_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_buy_exact_quote_in_v2_n27.json",
+    "pumpfun/ix_buy_exact_quote_in_v2_n28.json",
+    "pumpfun/ix_buy_exact_quote_in_v2_n29.json"
+), idl(program = "pump", instruction = "buy_exact_quote_in_v2"))]
 pub struct BuyExactQuoteInV2Params {
     /// Quote the trader spends — the pinned side.
     pub spendable_quote_in: u64,
     /// Minimum tokens to accept (slippage bound).
     pub min_tokens_out: u64,
     /// Trailing `track_volume` the IDL does not declare — see the module docs.
+    #[idl(undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures")]
     pub track_volume: OptionBool,
 }
 

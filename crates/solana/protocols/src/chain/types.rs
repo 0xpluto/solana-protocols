@@ -89,9 +89,7 @@ impl ParsedTransaction {
     pub fn swaps(&self) -> impl Iterator<Item = &Swap> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::Swap(s) => Some(s),
-            ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) => {
-                None
-            }
+            ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) | ChainEvent::Liquidity(_) => None,
         })
     }
 
@@ -99,7 +97,7 @@ impl ParsedTransaction {
     pub fn token_creations(&self) -> impl Iterator<Item = &TokenCreation> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::TokenCreation(c) => Some(c),
-            ChainEvent::Swap(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) => None,
+            ChainEvent::Swap(_) | ChainEvent::Migration(_) | ChainEvent::CreatorFee(_) | ChainEvent::Liquidity(_) => None,
         })
     }
 
@@ -107,7 +105,18 @@ impl ParsedTransaction {
     pub fn migrations(&self) -> impl Iterator<Item = &Migration> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::Migration(m) => Some(m),
-            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::CreatorFee(_) => None,
+            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::CreatorFee(_) | ChainEvent::Liquidity(_) => None,
+        })
+    }
+
+    /// Iterate just the [`Liquidity`] events.
+    pub fn liquidity(&self) -> impl Iterator<Item = &Liquidity> {
+        self.events.iter().filter_map(|e| match e {
+            ChainEvent::Liquidity(l) => Some(l),
+            ChainEvent::Swap(_)
+            | ChainEvent::TokenCreation(_)
+            | ChainEvent::Migration(_)
+            | ChainEvent::CreatorFee(_) => None,
         })
     }
 
@@ -115,7 +124,7 @@ impl ParsedTransaction {
     pub fn creator_fees(&self) -> impl Iterator<Item = &CreatorFee> {
         self.events.iter().filter_map(|e| match e {
             ChainEvent::CreatorFee(c) => Some(c),
-            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) => None,
+            ChainEvent::Swap(_) | ChainEvent::TokenCreation(_) | ChainEvent::Migration(_) | ChainEvent::Liquidity(_) => None,
         })
     }
 
@@ -305,6 +314,42 @@ pub enum ChainEvent {
     TokenCreation(TokenCreation),
     Migration(Migration),
     CreatorFee(CreatorFee),
+    /// Liquidity added to or removed from an AMM pool.
+    ///
+    /// A deposit and a withdrawal are the same fact with opposite signs, so one
+    /// variant carries both rather than two that every consumer has to handle
+    /// symmetrically and eventually handles differently.
+    ///
+    /// These decoded to `ExtractError::Unmodelled` before — counted, so at least
+    /// visible, but a real liquidity movement that nothing downstream ever saw.
+    Liquidity(Liquidity),
+}
+
+/// Liquidity entering or leaving a pool.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Liquidity {
+    /// Which AMM.
+    pub protocol: Protocol,
+    /// The pool.
+    pub pool: Pubkey,
+    /// The wallet whose liquidity moved.
+    pub provider: Pubkey,
+    /// Positive on a deposit, negative on a withdrawal.
+    ///
+    /// Signed rather than a separate direction flag: a consumer summing these
+    /// gets net flow without having to remember which way each row points, and
+    /// a direction it forgot to branch on cannot silently add instead of
+    /// subtract.
+    pub base_delta: i128,
+    /// The quote side, same sign convention.
+    pub quote_delta: i128,
+    /// LP tokens minted (deposit) or burned (withdrawal), unsigned — the
+    /// direction is already carried by the deltas.
+    pub lp_token_amount: u64,
+    /// Pool reserves after the movement, as the event reported them.
+    pub pool_base_reserves: u64,
+    /// Pool reserves after the movement, as the event reported them.
+    pub pool_quote_reserves: u64,
 }
 
 impl ChainEvent {
@@ -314,6 +359,7 @@ impl ChainEvent {
             ChainEvent::TokenCreation(c) => c.protocol,
             ChainEvent::Migration(m) => m.from_protocol,
             ChainEvent::CreatorFee(c) => c.protocol,
+            ChainEvent::Liquidity(l) => l.protocol,
         }
     }
 }
@@ -419,6 +465,15 @@ pub struct Swap {
     ///
     /// [`OptionBool::None`]: crate::protocols::OptionBool::None
     pub track_volume: crate::protocols::OptionBool,
+    /// Whether this trade filled the bonding curve.
+    ///
+    /// Pumpfun emits `CompleteEvent` from the buy that completes the curve, so
+    /// the completion is a property of that trade rather than an event beside
+    /// it — extraction yields one `ChainEvent` per instruction, and inventing a
+    /// second would mean two rows for one instruction.
+    ///
+    /// Always `false` on protocols with no bonding curve.
+    pub completed_curve: bool,
     /// Bonding curve, AMM pool, or CLMM pool — whichever primitive
     /// holds reserves for this protocol.
     pub pool: Pubkey,
@@ -614,6 +669,18 @@ pub struct TokenCreation {
     /// Metadata URI (IPFS / HTTPS). Empty string when the protocol
     /// doesn't supply one.
     pub uri: String,
+    /// Total supply minted at launch, from `CreateEvent`.
+    ///
+    /// `None` when the creation was read from the instruction alone. Market cap
+    /// needs this, and the alternative is an RPC `getTokenSupply` per mint —
+    /// a network round trip for a number the chain already told us.
+    pub token_total_supply: Option<u64>,
+    /// Virtual token reserves the curve started at, from `CreateEvent`.
+    pub initial_virtual_token_reserves: Option<u64>,
+    /// Virtual SOL reserves the curve started at, from `CreateEvent`.
+    ///
+    /// With the token side, this is the launch price without a quote.
+    pub initial_virtual_sol_reserves: Option<u64>,
 }
 
 /// A token's liquidity graduating from one protocol to another.
@@ -645,6 +712,7 @@ mod tests {
     fn sample_swap() -> Swap {
         // Buy: trader paid WSOL (token_in), received mint token (token_out).
         Swap {
+            completed_curve: false,
             track_volume: crate::protocols::OptionBool::None,
             instruction: crate::swap_instruction::SwapInstruction::Unknown([0; 8]),
             protocol: Protocol::Pumpfun,
@@ -741,6 +809,9 @@ mod tests {
             vec![
                 ChainEvent::Swap(sample_swap()),
                 ChainEvent::TokenCreation(TokenCreation {
+                    token_total_supply: None,
+                    initial_virtual_token_reserves: None,
+                    initial_virtual_sol_reserves: None,
                     protocol: Protocol::Pumpfun,
                     mint: pk(0x02),
                     pool: pk(0x01),

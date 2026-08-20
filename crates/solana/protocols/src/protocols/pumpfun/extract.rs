@@ -13,14 +13,23 @@
 
 use solana_program::pubkey::Pubkey;
 
-use super::events::{CollectCreatorFeeEvent, DistributeCreatorFeesEvent, TradeEvent};
+use super::events::{
+    CompleteEvent,
+    CreateEvent,
+    CompletePumpAmmMigrationEvent,CollectCreatorFeeEvent, DistributeCreatorFeesEvent, TradeEvent};
 use super::{
-    BuyAccounts, BuyExactQuoteInV2Params, BuyExactSolInParams, BuyParams, BuyV2Params,
+    MigrateAccounts, MigrateParams, MigrateV2Accounts, MigrateV2Params,
+    BuyAccounts, BuyExactQuoteInV2Params, BuyExactSolInParams, BuyParams, BuyV2Accounts,
+    BuyV2Params,
     CollectCreatorFeeParams, CollectCreatorFeeV2Params, CreateAccounts, CreateParams,
     CreateV2Accounts, CreateV2Params, DistributeCreatorFeesParams, DistributeCreatorFeesV2Params,
-    PumpfunInstruction, SellAccounts, SellParams, SellV2Params, PROGRAM_ID as PUMPFUN_PROGRAM,
+    PumpfunInstruction, SellAccounts, SellParams, SellV2Accounts, SellV2Params,
+    PROGRAM_ID as PUMPFUN_PROGRAM,
 };
 use crate::chain::{
+    optional_child_event,
+    ExtractsMigration,
+    Migration,
     child_event, corroborate, report_extract_failure, ChainEvent, CreatorFee, CreatorPayout,
     CurveState, ExtractContext, ExtractError, Extracted, ExtractsCreation, ExtractsCreatorFee,
     ExtractsSwap, ProtocolExtractor, Swap, TokenCreation,
@@ -98,10 +107,28 @@ impl PumpfunExtractor {
             PumpfunInstruction::BuyExactQuoteInV2(p) => swap_via(p, ix, all, ctx),
             PumpfunInstruction::SellV2(p) => swap_via(p, ix, all, ctx),
             PumpfunInstruction::Create(p) => {
-                Ok(Some(ChainEvent::TokenCreation(p.creation(ix, ctx)?)))
+                let ev = optional_child_event::<CreateEvent>(ix, all, &PUMPFUN_PROGRAM)?;
+                Ok(Some(ChainEvent::TokenCreation(p.creation(ev.as_ref(), ix, ctx)?)))
+            }
+            // Graduation, from pumpfun's own side. The amounts are in the
+            // event; the accounts name the curve and the pool it became. The
+            // pumpswap `create_pool` CPI records the same graduation from the
+            // AMM side — two rows for one fact, deliberately, because each
+            // program reports fields the other does not.
+            PumpfunInstruction::Migrate(p) => {
+                let ev = child_event::<CompletePumpAmmMigrationEvent>(ix, all, &PUMPFUN_PROGRAM)?;
+                Ok(Some(ChainEvent::Migration(p.migration(&ev, ix)?)))
+            }
+            PumpfunInstruction::MigrateV2(p) => {
+                let ev = child_event::<CompletePumpAmmMigrationEvent>(ix, all, &PUMPFUN_PROGRAM)?;
+                Ok(Some(ChainEvent::Migration(p.migration(&ev, ix)?)))
             }
             PumpfunInstruction::CreateV2(p) => {
-                Ok(Some(ChainEvent::TokenCreation(p.creation(ix, ctx)?)))
+                Ok(Some(ChainEvent::TokenCreation(p.creation(
+                    optional_child_event::<CreateEvent>(ix, all, &PUMPFUN_PROGRAM)?.as_ref(),
+                    ix,
+                    ctx,
+                )?)))
             }
             PumpfunInstruction::CollectCreatorFee(p) => fee_via(p, ix, all),
             PumpfunInstruction::CollectCreatorFeeV2(p) => fee_via(p, ix, all),
@@ -119,7 +146,14 @@ fn swap_via<T: ExtractsSwap>(
     ctx: &dyn ExtractContext,
 ) -> Extracted {
     let event = child_event::<T::Event>(ix, all, &PUMPFUN_PROGRAM)?;
-    Ok(Some(ChainEvent::Swap(params.swap(&event, ix, ctx)?)))
+    let mut swap = params.swap(&event, ix, ctx)?;
+    // `CompleteEvent` rides on the trade that fills the curve, alongside the
+    // `TradeEvent`. Absence is the normal case — every other trade — so it is
+    // looked up optionally rather than through `child_event`, which would
+    // report a routine absence as a gap.
+    swap.completed_curve =
+        optional_child_event::<CompleteEvent>(ix, all, &PUMPFUN_PROGRAM)?.is_some();
+    Ok(Some(ChainEvent::Swap(swap)))
 }
 
 /// Same, for the creator-fee family.
@@ -174,30 +208,60 @@ fn identity_from_v1_sell(ix: &ParsedInstruction) -> Result<SwapIdentity, Extract
     })
 }
 
-/// The v2 forms carry a *variable* account list — 26/27/28/29 slots observed on
-/// mainnet — so no fixed index is safe and reading them through a v1 struct
-/// would yield the wrong mint, pool and trader while looking successful.
+/// Identity for the v2 forms, read from the account list and corroborated
+/// against the event.
 ///
-/// They do not need one. The event names the mint and the trader, and the
-/// bonding curve is a PDA *of* the mint, so identity is recovered without
-/// reference to any slot. The derived PDA is then corroborated against the
-/// instruction's own account list: a swap really did touch its curve, so a
-/// derivation that does not appear there is one we cannot stand behind.
-fn identity_from_v2(ix: &ParsedInstruction, ev: &TradeEvent) -> Result<SwapIdentity, ExtractError> {
-    let pool = super::accounts::derive_bonding_curve_pda(&ev.mint);
-    if !ix.accounts.contains(&pool) {
-        return Err(ExtractError::Corroboration {
-            field: "bonding_curve derived from the event mint",
-            from_event: pool.to_string(),
-            from_accounts: "absent from the instruction's accounts".to_string(),
-        });
-    }
+/// This used to derive the bonding curve as a PDA of the event's mint and merely
+/// check that the derived address appeared *somewhere* in the account list,
+/// because the v2 lists are variable — 26/27/28/29 slots observed — and no index
+/// looked safe. The variability is real but it is a **suffix**: every extra
+/// account lands past the `event_authority`/`program` pair that terminates an
+/// Anchor `emit_cpi!` instruction, so each named slot is exactly where the IDL
+/// puts it. Settled across 63 recorded mainnet instructions.
+///
+/// So all three facts now come from a declared slot *and* from the event, and
+/// disagreement refuses. The old shape could corroborate the curve but had to
+/// take the trader on the event's word alone.
+fn identity_from_v2<A: V2SwapAccounts>(
+    accounts: &A,
+    ev: &TradeEvent,
+) -> Result<SwapIdentity, ExtractError> {
+    corroborate("mint", &ev.mint, &accounts.base_mint())?;
+    corroborate("trader", &ev.user, &accounts.user())?;
+    // The curve is also a PDA of the mint, so the slot and the derivation are
+    // two independent sources for one fact. Cheap, and it is the check that
+    // would catch the program reordering the list without renaming anything.
+    let derived = super::accounts::derive_bonding_curve_pda(&ev.mint);
+    corroborate("bonding_curve", &derived, &accounts.bonding_curve())?;
     Ok(SwapIdentity {
         mint: ev.mint,
-        pool,
-        trader: ev.user,
+        pool: accounts.bonding_curve(),
+        trader: accounts.user(),
     })
 }
+
+/// The three identity slots the v2 swap layouts share.
+///
+/// `buy_v2` and `buy_exact_quote_in_v2` are one struct (identical IDL account
+/// lists); `sell_v2` is its own. A trait rather than a match so adding a fourth
+/// v2 form is a new `impl`, not a new arm in a function that already knows how
+/// to do the work.
+trait V2SwapAccounts {
+    fn base_mint(&self) -> Pubkey;
+    fn bonding_curve(&self) -> Pubkey;
+    fn user(&self) -> Pubkey;
+}
+
+macro_rules! impl_v2_swap_accounts {
+    ($($t:ty),+ $(,)?) => {$(
+        impl V2SwapAccounts for $t {
+            fn base_mint(&self) -> Pubkey { self.base_mint }
+            fn bonding_curve(&self) -> Pubkey { self.bonding_curve }
+            fn user(&self) -> Pubkey { self.user }
+        }
+    )+};
+}
+impl_v2_swap_accounts!(BuyV2Accounts, SellV2Accounts);
 
 /// Map a `TradeEvent` onto the token-agnostic [`Swap`], given identity.
 ///
@@ -231,6 +295,8 @@ fn swap_from(
     };
 
     Swap {
+        // Set by `swap_via`, which can see the sibling instruction carrying `CompleteEvent`.
+        completed_curve: false,
         track_volume,
         instruction: crate::swap_instruction::resolve(&ix.program_id, &ix.data),
         protocol: Protocol::Pumpfun,
@@ -318,7 +384,13 @@ impl ExtractsSwap for BuyV2Params {
         ix: &ParsedInstruction,
         _ctx: &dyn ExtractContext,
     ) -> Result<Swap, ExtractError> {
-        let id = identity_from_v2(ix, event)?;
+        let accounts = BuyV2Accounts::from_pubkeys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "BuyV2Accounts",
+                source,
+            }
+        })?;
+        let id = identity_from_v2(&accounts, event)?;
         // No `track_volume`: the IDL declares none for this instruction and 0 of
         // 208 mainnet instructions carried one, unlike its v2 sibling.
         Ok(swap_from(
@@ -339,7 +411,13 @@ impl ExtractsSwap for BuyExactQuoteInV2Params {
         ix: &ParsedInstruction,
         _ctx: &dyn ExtractContext,
     ) -> Result<Swap, ExtractError> {
-        let id = identity_from_v2(ix, event)?;
+        let accounts = BuyV2Accounts::from_pubkeys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "BuyV2Accounts",
+                source,
+            }
+        })?;
+        let id = identity_from_v2(&accounts, event)?;
         // Carried even though no IDL declares it — measured on 150 of 621
         // mainnet instructions, and the only record that the trade opted in.
         Ok(swap_from(&id, event, ix, self.track_volume))
@@ -355,7 +433,13 @@ impl ExtractsSwap for SellV2Params {
         ix: &ParsedInstruction,
         _ctx: &dyn ExtractContext,
     ) -> Result<Swap, ExtractError> {
-        let id = identity_from_v2(ix, event)?;
+        let accounts = SellV2Accounts::from_pubkeys(&ix.accounts).map_err(|source| {
+            ExtractError::AccountLayout {
+                expected: "SellV2Accounts",
+                source,
+            }
+        })?;
+        let id = identity_from_v2(&accounts, event)?;
         Ok(swap_from(
             &id,
             event,
@@ -369,9 +453,80 @@ impl ExtractsSwap for SellV2Params {
 // Creations
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Graduation, from pumpfun's side.
+///
+/// A trait rather than two copies: `migrate` and `migrate_v2` differ in account
+/// count and in whether the mint slot is called `mint` or `base_mint`, but the
+/// migration they describe is identical.
+trait MigrationAccounts {
+    fn mint(&self) -> Pubkey;
+    fn bonding_curve(&self) -> Pubkey;
+    fn pool(&self) -> Pubkey;
+}
+
+impl MigrationAccounts for MigrateAccounts {
+    fn mint(&self) -> Pubkey { self.mint }
+    fn bonding_curve(&self) -> Pubkey { self.bonding_curve }
+    fn pool(&self) -> Pubkey { self.pool }
+}
+
+impl MigrationAccounts for MigrateV2Accounts {
+    fn mint(&self) -> Pubkey { self.base_mint }
+    fn bonding_curve(&self) -> Pubkey { self.bonding_curve }
+    fn pool(&self) -> Pubkey { self.pool }
+}
+
+fn migration_from<A: MigrationAccounts + crate::parsing::FromAccountKeys>(
+    ev: &CompletePumpAmmMigrationEvent,
+    ix: &ParsedInstruction,
+    expected: &'static str,
+) -> Result<Migration, ExtractError> {
+    let a = A::from_account_keys(&ix.accounts)
+        .map_err(|source| ExtractError::AccountLayout { expected, source })?;
+    corroborate("mint", &ev.mint, &a.mint())?;
+    corroborate("bonding_curve", &ev.bonding_curve, &a.bonding_curve())?;
+    corroborate("pool", &ev.pool, &a.pool())?;
+    Ok(Migration {
+        from_protocol: Protocol::Pumpfun,
+        to_protocol: Protocol::PumpSwap,
+        mint: ev.mint,
+        from_pool: ev.bonding_curve,
+        to_pool: ev.pool,
+        migrated_sol: ev.sol_amount,
+        migrated_tokens: ev.mint_amount,
+    })
+}
+
+impl ExtractsMigration for MigrateParams {
+    type Event = CompletePumpAmmMigrationEvent;
+
+    fn migration(
+        &self,
+        ev: &CompletePumpAmmMigrationEvent,
+        ix: &ParsedInstruction,
+    ) -> Result<Migration, ExtractError> {
+        migration_from::<MigrateAccounts>(ev, ix, "MigrateAccounts")
+    }
+}
+
+impl ExtractsMigration for MigrateV2Params {
+    type Event = CompletePumpAmmMigrationEvent;
+
+    fn migration(
+        &self,
+        ev: &CompletePumpAmmMigrationEvent,
+        ix: &ParsedInstruction,
+    ) -> Result<Migration, ExtractError> {
+        migration_from::<MigrateV2Accounts>(ev, ix, "MigrateV2Accounts")
+    }
+}
+
 impl ExtractsCreation for CreateParams {
+    type Event = CreateEvent;
+
     fn creation(
         &self,
+        event: Option<&CreateEvent>,
         ix: &ParsedInstruction,
         _ctx: &dyn ExtractContext,
     ) -> Result<TokenCreation, ExtractError> {
@@ -389,13 +544,21 @@ impl ExtractsCreation for CreateParams {
             name: self.name.clone(),
             symbol: self.symbol.clone(),
             uri: self.uri.clone(),
+            // From the event: the instruction carries the metadata, the event
+            // carries what was minted and where the curve started.
+            token_total_supply: event.map(|e| e.token_total_supply),
+            initial_virtual_token_reserves: event.map(|e| e.virtual_token_reserves),
+            initial_virtual_sol_reserves: event.map(|e| e.virtual_sol_reserves),
         })
     }
 }
 
 impl ExtractsCreation for CreateV2Params {
+    type Event = CreateEvent;
+
     fn creation(
         &self,
+        event: Option<&CreateEvent>,
         ix: &ParsedInstruction,
         _ctx: &dyn ExtractContext,
     ) -> Result<TokenCreation, ExtractError> {
@@ -421,6 +584,11 @@ impl ExtractsCreation for CreateV2Params {
             name: self.name.clone(),
             symbol: self.symbol.clone(),
             uri: self.uri.clone(),
+            // From the event: the instruction carries the metadata, the event
+            // carries what was minted and where the curve started.
+            token_total_supply: event.map(|e| e.token_total_supply),
+            initial_virtual_token_reserves: event.map(|e| e.virtual_token_reserves),
+            initial_virtual_sol_reserves: event.map(|e| e.virtual_sol_reserves),
         })
     }
 }
@@ -803,14 +971,15 @@ mod tests {
 
     #[test]
     fn create_produces_token_creation_event() {
+        let mint = pk(0xAA);
+        let bonding_curve = pk(0xCC);
+        let creator = pk(0xBB);
         let create = CreateParams::new(
             "Test Token".into(),
             "TST".into(),
             "https://example.com/meta.json".into(),
+            creator,
         );
-        let mint = pk(0xAA);
-        let bonding_curve = pk(0xCC);
-        let creator = pk(0xBB);
 
         // 14-slot CreateAccounts: mint(0), bonding_curve(2), user(7)
         // are the fields we extract.
@@ -1028,6 +1197,23 @@ mod v2_identity {
         .expect("serialises")
     }
 
+    /// A `sell_v2` account list with the identity slots at their IDL indices
+    /// and `extra` remaining accounts appended.
+    fn sell_v2_accounts(
+        mint: Pubkey,
+        user: Pubkey,
+        pool: Pubkey,
+        extra: usize,
+    ) -> Vec<Pubkey> {
+        let mut a: Vec<Pubkey> =
+            std::iter::repeat_with(Pubkey::new_unique).take(26).collect();
+        a[1] = mint; // base_mint
+        a[10] = pool; // bonding_curve
+        a[13] = user; // user
+        a.extend(std::iter::repeat_with(Pubkey::new_unique).take(extra));
+        a
+    }
+
     fn v2_sell(accounts: Vec<Pubkey>, mint: Pubkey, user: Pubkey) -> Vec<ParsedInstruction> {
         let mut data = SELL_V2_DISCRIMINATOR.to_vec();
         data.extend_from_slice(&[0u8; 16]);
@@ -1053,23 +1239,28 @@ mod v2_identity {
         vec![outer, inner]
     }
 
-    /// v2 identity comes from the event and a PDA derivation, so it survives
-    /// an account list of any length or order — which is the point, since the
-    /// layout was observed at 26/27/28/29 slots.
+    /// A well-formed `sell_v2` account list, at each length seen on mainnet.
+    ///
+    /// This test used to assert the opposite: that identity survived an account
+    /// list of *any* length or order, because the pool was found by scanning for
+    /// a derived PDA. That was the old design and this was its test, so it had
+    /// to be rewritten rather than kept — a list with the curve at slot 5 is not
+    /// a `sell_v2` account list, and accepting one was the latitude that made a
+    /// wrong list look right.
+    ///
+    /// The real layout is checked against 63 recorded mainnet instructions in
+    /// `instructions::v2_account_layout`; this covers the extractor's behaviour
+    /// on top of it.
     #[test]
-    fn v2_identity_is_recovered_without_any_fixed_account_index() {
+    fn a_well_formed_v2_list_extracts_at_every_observed_length() {
         let mint = Pubkey::new_unique();
         let user = Pubkey::new_unique();
         let pool = derive_bonding_curve_pda(&mint);
 
-        for pad in [0usize, 5, 13] {
-            let mut accounts = vec![Pubkey::new_unique(); pad];
-            accounts.push(pool); // position deliberately varies
-            accounts.extend(std::iter::repeat_with(Pubkey::new_unique).take(pad));
-
-            let all = v2_sell(accounts, mint, user);
+        for extra in [0usize, 1, 3] {
+            let all = v2_sell(sell_v2_accounts(mint, user, pool, extra), mint, user);
             let ev = PumpfunExtractor::extract(&all[0], &all, &NoContext)
-                .unwrap_or_else(|| panic!("pad={pad} must extract"));
+                .unwrap_or_else(|| panic!("extra={extra} must extract"));
             match ev {
                 ChainEvent::Swap(s) => {
                     assert_eq!(s.pool, pool);
@@ -1081,14 +1272,40 @@ mod v2_identity {
         }
     }
 
-    /// If the derived curve is absent from the instruction's own accounts we
-    /// have not corroborated the identity, so nothing is recorded. Without
-    /// this a mint from an unrelated event would mint a plausible-looking row.
+    /// Too few accounts is refused, not read short.
     #[test]
-    fn an_uncorroborated_derivation_records_nothing() {
+    fn a_truncated_v2_list_is_refused() {
         let mint = Pubkey::new_unique();
         let user = Pubkey::new_unique();
-        let all = v2_sell(vec![Pubkey::new_unique(); 26], mint, user);
+        let pool = derive_bonding_curve_pda(&mint);
+        let mut accounts = sell_v2_accounts(mint, user, pool, 0);
+        accounts.pop();
+        let all = v2_sell(accounts, mint, user);
+        assert!(PumpfunExtractor::extract(&all[0], &all, &NoContext).is_none());
+    }
+
+    /// The curve slot and the PDA derived from the event's mint are two
+    /// independent sources for one fact, so disagreement records nothing.
+    ///
+    /// Without this a mint from an unrelated event would mint a plausible row.
+    #[test]
+    fn a_curve_slot_disagreeing_with_the_event_records_nothing() {
+        let mint = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let accounts = sell_v2_accounts(mint, user, Pubkey::new_unique(), 0);
+        let all = v2_sell(accounts, mint, user);
+        assert!(PumpfunExtractor::extract(&all[0], &all, &NoContext).is_none());
+    }
+
+    /// The trader slot is corroborated too — the old shape took the event's
+    /// word for it, because there was no slot to compare against.
+    #[test]
+    fn a_user_slot_disagreeing_with_the_event_records_nothing() {
+        let mint = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let pool = derive_bonding_curve_pda(&mint);
+        let accounts = sell_v2_accounts(mint, Pubkey::new_unique(), pool, 0);
+        let all = v2_sell(accounts, mint, user);
         assert!(PumpfunExtractor::extract(&all[0], &all, &NoContext).is_none());
     }
 }

@@ -7,7 +7,7 @@ use solana_program::pubkey::Pubkey;
 use spl_associated_token_account::get_associated_token_address;
 
 use super::constants::{
-    BONDING_CURVE_SEED, CREATOR_VAULT_SEED, PROGRAM_ID, USER_VOLUME_ACCUMULATOR_SEED,
+    BONDING_CURVE_SEED, BONDING_CURVE_V2_SEED, CREATOR_VAULT_SEED, PROGRAM_ID, USER_VOLUME_ACCUMULATOR_SEED,
 };
 
 /// All keys needed to build pump.fun swap instructions.
@@ -68,6 +68,17 @@ impl PumpfunKeys {
 pub fn derive_bonding_curve_pda(mint: &Pubkey) -> Pubkey {
     let (pda, _bump) =
         Pubkey::find_program_address(&[BONDING_CURVE_SEED, mint.as_ref()], &PROGRAM_ID);
+    pda
+}
+
+/// Derive the `bonding_curve_v2` PDA appended to buy/sell account lists.
+///
+/// Every one of 33 tailed mainnet instructions carried it, at a position that
+/// varies — so a consumer finds it by deriving it, not by reading a slot.
+#[must_use]
+pub fn derive_bonding_curve_v2_pda(mint: &Pubkey) -> Pubkey {
+    let (pda, _bump) =
+        Pubkey::find_program_address(&[BONDING_CURVE_V2_SEED, mint.as_ref()], &PROGRAM_ID);
     pda
 }
 

@@ -2,17 +2,22 @@
 
 use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
-use solana_protocols_macros::{AccountMetas, BuildAccounts, OnchainInstruction};
+
+use crate::protocols::OptionBool;
+
+use crate::parsing::accounts::Conditional;
+use solana_protocols_macros::{AccountMetas, BuildAccounts, InstructionData, OnchainInstruction};
 use solana_sdk::instruction::Instruction;
 
 use crate::error::Result;
-use crate::parsing::{FromInstructionData, InstructionParseError};
 use crate::traits::InstructionBuilder;
 
 use super::super::accounts::PumpfunKeys;
 use super::super::constants::{
     BONDING_CURVE_SEED, EVENT_AUTHORITY_PDA, FEE_COLLECTOR, FEE_CONFIG_PDA, GLOBAL_PDA, PROGRAM_ID,
     PUMP_FEES_PROGRAM_ID, SELL_DISCRIMINATOR,
+    USER_VOLUME_ACCUMULATOR_SEED,
+    BONDING_CURVE_V2_SEED,
 };
 
 /// Account list for pump.fun sell instruction.
@@ -25,7 +30,13 @@ use super::super::constants::{
 #[derive(Debug, Clone, AccountMetas, BuildAccounts, OnchainInstruction)]
 #[idl(program = "pump", instruction = "sell")]
 #[build(fixture = "pumpfun/ix_sell.json")]
-#[onchain_ix(fixture = "pumpfun/ix_sell.json")]
+#[onchain_ix(fixtures(
+    "pumpfun/ix_sell.json",
+    "pumpfun/ix_sell_n16.json",
+    "pumpfun/ix_sell_n17.json",
+    "pumpfun/ix_sell_n18.json",
+    "pumpfun/ix_sell_n19.json"
+))]
 pub struct SellAccounts {
     /// Global state PDA.
     #[account]
@@ -84,6 +95,32 @@ pub struct SellAccounts {
     #[account]
     #[build(key = PUMP_FEES_PROGRAM_ID)]
     pub fee_program: Pubkey,
+
+    /// The cashback volume accumulator, when the coin has cashback enabled.
+    ///
+    /// `PDA(pumpfun, ["user_volume_accumulator", user])`. Pump's cashback docs
+    /// name it as the 0th appended account on `sell`, and mainnet agrees — it is
+    /// present on the 17/18/19-account sells and absent below.
+    #[account(resolved = super::super::accounts::derive_user_volume_accumulator_pda(&user))]
+    #[build(optional, pda(program = PROGRAM_ID, seeds(USER_VOLUME_ACCUMULATOR_SEED, user)))]
+    pub appended_user_volume_accumulator: Conditional,
+    /// The v2 bonding curve, appended to every buy and sell.
+    ///
+    /// `PDA(pumpfun, ["bonding-curve-v2", mint])`. Located by derivation, not by
+    /// index: it sits at tail 0 when no accumulator precedes it and tail 1 when
+    /// one does.
+    #[account(resolved = super::super::accounts::derive_bonding_curve_v2_pda(&mint))]
+    #[build(pda(program = PROGRAM_ID, seeds(BONDING_CURVE_V2_SEED, mint)))]
+    pub bonding_curve_v2: Conditional,
+    /// Fee destinations from the `pump_fees` global roster.
+    #[account(
+        remaining,
+        reason = "the pump_fees BuybackVault roster: eight exist on chain and a \
+                  caller credits any subset, so which ones appear is caller policy \
+                  rather than layout, and none is derivable from this instruction"
+    )]
+    pub buyback_vaults: Vec<Pubkey>,
+
 }
 
 impl SellAccounts {
@@ -103,12 +140,48 @@ impl SellAccounts {
 }
 
 /// Parameters for a sell instruction.
-#[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, borsh::BorshSerialize)]
+///
+/// Decode and encode both come from the derive, which means borsh. This struct
+/// hand-rolled both: `from_le_bytes` at literal offsets behind a `data.len() < 16`
+/// check — a *minimum*, so trailing bytes were ignored rather than refused, which
+/// is exactly how an undeclared `track_volume` rode along on a sibling instruction
+/// unnoticed. It also meant no generated fixture test could exist here, because
+/// the struct owned its own decoder.
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Deserialize,
+    borsh::BorshDeserialize,
+    borsh::BorshSerialize,
+    InstructionData,
+)]
+#[instruction_data(discriminator = SELL_DISCRIMINATOR, fixtures(
+    "pumpfun/ix_sell.json",
+    "pumpfun/ix_sell_n16.json",
+    "pumpfun/ix_sell_n17.json",
+    "pumpfun/ix_sell_n18.json",
+    "pumpfun/ix_sell_n19.json"
+), idl(program = "pump", instruction = "sell"))]
 pub struct SellParams {
     /// Amount of tokens to sell.
     pub amount: u64,
     /// Minimum SOL to receive (slippage protection).
     pub min_sol_output: u64,
+    /// Trailing `track_volume` that no IDL declares.
+    ///
+    /// Neither the vendored nor the live on-chain IDL lists an argument here,
+    /// and senders emit one anyway — `[1, 1]`, borsh's `Option<bool>` encoding
+    /// of `Some(true)`, on `ix_sell_n16` and `ix_sell_n17`. Three other captured
+    /// sells send nothing, which is why the type is
+    /// [`OptionBool`](crate::protocols::OptionBool) rather than a `bool`: the
+    /// argument's *width* is what varies, and absent is not false.
+    ///
+    /// The hand-rolled decoder this replaced checked `data.len() < 16` — a
+    /// minimum — so it read the first sixteen bytes and discarded these two
+    /// without a word. Refusing them is what surfaced them.
+    #[idl(undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures")]
+    pub track_volume: OptionBool,
 }
 
 impl SellParams {
@@ -118,6 +191,10 @@ impl SellParams {
         SellParams {
             amount,
             min_sol_output,
+            // We send no flag. Absent is what the majority of captured sells
+            // carry, and it is the only value we can pick honestly: opting a
+            // trade into volume tracking is the caller's decision, not a default.
+            track_volume: OptionBool::None,
         }
     }
 
@@ -135,36 +212,13 @@ impl SellParams {
         SellParams {
             amount: tokens_in,
             min_sol_output: min_sol,
+            track_volume: OptionBool::None,
         }
     }
 
-    /// Serialize to instruction data.
-    #[must_use]
-    pub fn to_data(&self) -> Vec<u8> {
-        let mut data = Vec::with_capacity(24);
-        data.extend_from_slice(&SELL_DISCRIMINATOR);
-        data.extend_from_slice(&self.amount.to_le_bytes());
-        data.extend_from_slice(&self.min_sol_output.to_le_bytes());
-        data
-    }
 }
 
-impl FromInstructionData for SellParams {
-    fn from_instruction_data(data: &[u8]) -> std::result::Result<Self, InstructionParseError> {
-        if data.len() < 16 {
-            return Err(InstructionParseError::DeserializationFailed(format!(
-                "SellParams: expected 16 bytes, got {}",
-                data.len()
-            )));
-        }
-        let amount = u64::from_le_bytes(data[0..8].try_into().unwrap());
-        let min_sol_output = u64::from_le_bytes(data[8..16].try_into().unwrap());
-        Ok(SellParams {
-            amount,
-            min_sol_output,
-        })
-    }
-}
+
 
 // FromAccountKeys for SellAccounts — auto-generated by #[derive(AccountMetas)] macro
 

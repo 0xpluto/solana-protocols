@@ -1,0 +1,79 @@
+{
+ "program": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+ "instruction": "create_v2",
+ "signature": "2C44khia89eJiDKpVW3J4bYKKJyXP5zWeieDbNeRowouQhEiuswnCkPaR3jcoFUU9aTg75AACCd1N4SegtRz1Yyk",
+ "slot": 440352237,
+ "top_level": false,
+ "discriminator": [
+  214,
+  144,
+  76,
+  236,
+  95,
+  139,
+  49,
+  180
+ ],
+ "accounts": [
+  {
+   "pubkey": "F94zrp9BuwGCeyKPkQ6SCQBHCTJcw2mN1s7P9zK4pump"
+  },
+  {
+   "pubkey": "TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM"
+  },
+  {
+   "pubkey": "71bSm8SW1AdrLhCZU2n3cc8T57xzicWzffoYHriokxJd"
+  },
+  {
+   "pubkey": "5qdKjhXxnG7Ejb6WKSSkGC6oz4bikWzG333wjtpU1xGu"
+  },
+  {
+   "pubkey": "4wTV1YmiEkRvAtNtsSGPtUrqRYQMe5SKy2uB4Jjaxnjf"
+  },
+  {
+   "pubkey": "HokXjbXTdjEg8U4pC1pvjWEeQYzp8A5tdr5uqfjTgKM5"
+  },
+  {
+   "pubkey": "11111111111111111111111111111111"
+  },
+  {
+   "pubkey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+  },
+  {
+   "pubkey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+  },
+  {
+   "pubkey": "MAyhSmzXzV1pTf7LsNkrNwkWKTo4ougAJ1PPg47MD4e"
+  },
+  {
+   "pubkey": "13ec7XdrjF3h3YcqBTFDSReRcUFwbCnJaAQspM4j6DDJ"
+  },
+  {
+   "pubkey": "BwWK17cbHxwWBKZkUYvzxLcNQ1YVyaFezduWbtm2de6s"
+  },
+  {
+   "pubkey": "A5MVvzSgX4AvYMC1KAFo8uHfvjP8411PHby9sm4E8cch"
+  },
+  {
+   "pubkey": "7zT7hKoMTLB6XRGnG2f3hPpkryCscSLZFHHyA43J5Div"
+  },
+  {
+   "pubkey": "Ce6TQqeHC9p8KetsN6JsjHK7UTZk7nasjjnr7XxXp9F1"
+  },
+  {
+   "pubkey": "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+  },
+  {
+   "pubkey": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+  },
+  {
+   "pubkey": "527Jdb8b6TUSg9xV9Ue6pFqMQxjV2ctvSy99au5u3xFH"
+  },
+  {
+   "pubkey": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+  }
+ ],
+ "data_b64": "1pBM7F+LMbQMAAAAQXBlc2hpdCBDb2luBwAAAEFQRVNISVRQAAAAaHR0cHM6Ly9pcGZzLmlvL2lwZnMvYmFma3JlaWVpbWlyeHh1M2dhdXljamRhd3FrZWMybWQ2bWF5N2I0cXNmd3pwcHNmaTI2Zm5maDR1bXX5tO1t4L13hWtco6DRrjzmJF8IEwOxJRvX4af1qTsijAAA",
+ "declared_accounts": 16,
+ "note": "captured from the gRPC firehose, which carries account keys but not their per-instruction signer/writable privileges; flags are therefore absent and top_level is false"
+}
