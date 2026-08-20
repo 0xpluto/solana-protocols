@@ -15,131 +15,38 @@ pub use swap::{
 pub use withdraw::{WithdrawAccounts, WithdrawParams};
 
 use super::constants::{
-    DEPOSIT_IX, INITIALIZE2_IX, SWAP_BASE_IN_IX, SWAP_BASE_OUT_IX, WITHDRAW_IX,
+    DEPOSIT_IX, INITIALIZE2_IX, PROGRAM_ID, SWAP_BASE_IN_IX, SWAP_BASE_OUT_IX, WITHDRAW_IX,
 };
-use crate::parsing::{FromAccountKeys, FromInstructionData, InstructionParseError};
-use solana_program::pubkey::Pubkey;
+use solana_protocols_macros::ProtocolInstruction;
 
 /// Raydium V4 instruction variants.
 ///
-/// Uses manual `try_from_slice` because Raydium V4 uses 1-byte instruction
-/// indices, not 8-byte Anchor discriminators.
-#[derive(Debug, Clone)]
+/// Raydium V4 uses a 1-byte instruction index rather than an 8-byte Anchor
+/// discriminator. That is a declared parameter — `discriminator_size = 1` — not
+/// a reason to hand-roll dispatch: this module did so for years behind a comment
+/// saying the macro could not express it, which stopped being true once
+/// `spl_token` needed the same thing.
+#[derive(Debug, Clone, ProtocolInstruction)]
+#[protocol(program_id = PROGRAM_ID, discriminator_size = 1)]
 pub enum RaydiumV4Instruction {
     /// Swap with exact input amount.
+    #[instruction(discriminator = [SWAP_BASE_IN_IX], accounts = SwapBaseInAccounts)]
     SwapBaseIn(SwapBaseInParams),
     /// Swap with exact output amount.
+    #[instruction(discriminator = [SWAP_BASE_OUT_IX], accounts = SwapBaseOutAccounts)]
     SwapBaseOut(SwapBaseOutParams),
     /// Create a new AMM pool with initial liquidity.
+    #[instruction(discriminator = [INITIALIZE2_IX], accounts = Initialize2Accounts)]
     Initialize2(Initialize2Params),
     /// Add liquidity to an existing pool.
+    #[instruction(discriminator = [DEPOSIT_IX], accounts = DepositAccounts)]
     Deposit(DepositParams),
     /// Remove liquidity from a pool.
+    #[instruction(discriminator = [WITHDRAW_IX], accounts = WithdrawAccounts)]
     Withdraw(WithdrawParams),
 }
 
 impl RaydiumV4Instruction {
-    /// Try to parse instruction from data bytes.
-    ///
-    /// # Errors
-    ///
-    /// Returns error if instruction index is unrecognized or data is invalid.
-    pub fn try_from_slice(data: &[u8]) -> Result<Self, InstructionParseError> {
-        if data.is_empty() {
-            return Err(InstructionParseError::DataTooShort);
-        }
-
-        let ix_index = data[0];
-
-        // Strip the 1-byte discriminator before passing to from_instruction_data
-        // (trait contract: data is after discriminator)
-        let params_data = &data[1..];
-
-        match ix_index {
-            SWAP_BASE_IN_IX => {
-                let params =
-                    <SwapBaseInParams as FromInstructionData>::from_instruction_data(params_data)?;
-                Ok(RaydiumV4Instruction::SwapBaseIn(params))
-            }
-            SWAP_BASE_OUT_IX => {
-                let params =
-                    <SwapBaseOutParams as FromInstructionData>::from_instruction_data(params_data)?;
-                Ok(RaydiumV4Instruction::SwapBaseOut(params))
-            }
-            INITIALIZE2_IX => {
-                let params =
-                    <Initialize2Params as FromInstructionData>::from_instruction_data(params_data)?;
-                Ok(RaydiumV4Instruction::Initialize2(params))
-            }
-            DEPOSIT_IX => {
-                let params =
-                    <DepositParams as FromInstructionData>::from_instruction_data(params_data)?;
-                Ok(RaydiumV4Instruction::Deposit(params))
-            }
-            WITHDRAW_IX => {
-                let params =
-                    <WithdrawParams as FromInstructionData>::from_instruction_data(params_data)?;
-                Ok(RaydiumV4Instruction::Withdraw(params))
-            }
-            _ => Err(InstructionParseError::UnknownDiscriminatorVec(vec![
-                ix_index,
-            ])),
-        }
-    }
-
-    /// Get the instruction discriminator (1 byte for Raydium V4).
-    #[must_use]
-    pub fn discriminator(&self) -> [u8; 1] {
-        match self {
-            RaydiumV4Instruction::SwapBaseIn(_) => [SWAP_BASE_IN_IX],
-            RaydiumV4Instruction::SwapBaseOut(_) => [SWAP_BASE_OUT_IX],
-            RaydiumV4Instruction::Initialize2(_) => [INITIALIZE2_IX],
-            RaydiumV4Instruction::Deposit(_) => [DEPOSIT_IX],
-            RaydiumV4Instruction::Withdraw(_) => [WITHDRAW_IX],
-        }
-    }
-
-    /// Serialize instruction to bytes.
-    #[must_use]
-    pub fn data(&self) -> Vec<u8> {
-        match self {
-            RaydiumV4Instruction::SwapBaseIn(params) => params.to_data(),
-            RaydiumV4Instruction::SwapBaseOut(params) => params.to_data(),
-            RaydiumV4Instruction::Initialize2(params) => params.to_data(),
-            RaydiumV4Instruction::Deposit(params) => params.to_data(),
-            RaydiumV4Instruction::Withdraw(params) => params.to_data(),
-        }
-    }
-
-    /// Parse accounts for this instruction.
-    pub fn from_accounts(
-        &self,
-        account_keys: &[Pubkey],
-    ) -> Result<RaydiumV4InstructionAccounts, InstructionParseError> {
-        match self {
-            RaydiumV4Instruction::SwapBaseIn(_) => {
-                let accounts = SwapBaseInAccounts::from_account_keys(account_keys)?;
-                Ok(RaydiumV4InstructionAccounts::SwapBaseIn(accounts))
-            }
-            RaydiumV4Instruction::SwapBaseOut(_) => {
-                let accounts = SwapBaseOutAccounts::from_account_keys(account_keys)?;
-                Ok(RaydiumV4InstructionAccounts::SwapBaseOut(accounts))
-            }
-            RaydiumV4Instruction::Initialize2(_) => {
-                let accounts = Initialize2Accounts::from_account_keys(account_keys)?;
-                Ok(RaydiumV4InstructionAccounts::Initialize2(accounts))
-            }
-            RaydiumV4Instruction::Deposit(_) => {
-                let accounts = DepositAccounts::from_account_keys(account_keys)?;
-                Ok(RaydiumV4InstructionAccounts::Deposit(accounts))
-            }
-            RaydiumV4Instruction::Withdraw(_) => {
-                let accounts = WithdrawAccounts::from_account_keys(account_keys)?;
-                Ok(RaydiumV4InstructionAccounts::Withdraw(accounts))
-            }
-        }
-    }
-
     /// Check if this is a swap instruction.
     #[must_use]
     pub fn is_swap(&self) -> bool {
@@ -168,24 +75,10 @@ impl RaydiumV4Instruction {
     }
 }
 
-/// Raydium V4 instruction accounts enum.
-#[derive(Debug, Clone)]
-pub enum RaydiumV4InstructionAccounts {
-    /// SwapBaseIn accounts.
-    SwapBaseIn(SwapBaseInAccounts),
-    /// SwapBaseOut accounts.
-    SwapBaseOut(SwapBaseOutAccounts),
-    /// Initialize2 accounts.
-    Initialize2(Initialize2Accounts),
-    /// Deposit accounts.
-    Deposit(DepositAccounts),
-    /// Withdraw accounts.
-    Withdraw(WithdrawAccounts),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parsing::FromInstructionData;
 
     #[test]
     fn swap_base_in_params_to_data() {

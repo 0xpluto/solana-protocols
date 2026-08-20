@@ -42,12 +42,17 @@
 //! ```
 
 //!
-//! # Status: legacy shape
+//! # Status: partial
 //!
-//! Predates the current design: dispatch, account layouts and constants here
-//! are hand-written rather than generated or derived. It decodes correctly and
-//! is used in production, but a transcribed constant is this domain's most
-//! expensive bug class and nothing here is checked against an IDL.
+//! Instruction handling is the standard shape — one enum with
+//! `#[derive(ProtocolInstruction)]`, one file per discriminator, params and
+//! account structs on the derives — using `discriminator_size = 1`, since this
+//! program indexes instructions by a single byte rather than an Anchor
+//! discriminator. That width is a declared parameter, not a reason to diverge.
+//!
+//! Not yet standard: `LiquidityPool::from_account_data` is unimplemented (it
+//! returns an error rather than guessing), there is no extractor, and nothing
+//! here is verified against an IDL.
 //!
 //! **The reference implementation is `protocols::pumpfun`** — copy its shape,
 //! not this one. See the crate README's coverage table for what differs.

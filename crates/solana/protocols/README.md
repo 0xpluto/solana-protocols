@@ -75,7 +75,7 @@ what does a swap cost right now, and what instruction executes it.
 | Raydium Launchpad | partial² | ✓ | ✓ | — | — |
 | Meteora DBC | partial² | ✓ | ✓ | — | — |
 | Raydium CLMM | partial² | ✓ | — | — | — |
-| Raydium V4 | legacy³ | ✓ | ✓ | — | — |
+| Raydium V4 | partial² | ✓ | ✓ | — | — |
 | Meteora DLMM | legacy³ | ✓ | bin-walk¹ | — | — |
 | Meteora DAMM v2 | legacy³ | ✓ | — | — | — |
 
@@ -85,9 +85,9 @@ what does a swap cost right now, and what instruction executes it.
 account layout, but events and extraction are still hand-written and no IDL
 verification runs.
 
-³ **legacy** — predates the current shape entirely: hand-rolled dispatch,
-hand-written account structs, transcribed constants. Correct as far as it goes
-and used in production, but not the pattern to copy.
+³ **legacy** — predates the current shape entirely: hand-rolled dispatch and
+hand-written account structs. Correct as far as it goes and used in production,
+but not the pattern to copy.
 
 Concretely, per protocol:
 
@@ -95,7 +95,19 @@ Concretely, per protocol:
 |---|:---:|:---:|:---:|:---:|
 | Pumpfun / PumpSwap | ✓ | ✓ | ✓ | ✓ |
 | Raydium CPMM / CLMM / Launchpad, Meteora DBC | ✓ | ✓ | — | — |
-| Raydium V4, Meteora DLMM, Meteora DAMM v2 | — | — | — | — |
+| Raydium V4 | ✓ | —⁴ | — | — |
+| Meteora DLMM, Meteora DAMM v2 | — | — | — | — |
+
+⁴ `LiquidityPool::from_account_data` is explicitly unimplemented and returns an
+error rather than a guess. Instruction handling is the standard shape.
+
+**Every protocol above handles instructions the same way**: one `…Instruction`
+enum carrying `#[derive(ProtocolInstruction)]`, one file per discriminator, a
+params type per discriminator deriving `InstructionData`, and account structs
+deriving `AccountMetas`. Meteora DLMM and DAMM v2 are the two exceptions and are
+marked as such in their own modules — they predate the derive and have not been
+migrated. Everything else differs from the reference only in how far coverage
+extends, never in how it is built.
 
 ### Measured parse completeness
 

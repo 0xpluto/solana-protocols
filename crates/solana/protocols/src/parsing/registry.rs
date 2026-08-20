@@ -2418,9 +2418,14 @@ mod tests {
         );
 
         let result = raydium_v4_parse(&ix);
+        // `UnknownDiscriminator`, not the `Vec` form: generated dispatch pads a
+        // 1-byte index to eight and reports the same variant every protocol
+        // does. The hand-rolled dispatch this replaced was the only producer of
+        // the `Vec` form, which is exactly the kind of per-protocol difference
+        // that made two programs behave differently for no reason.
         assert!(matches!(
             result,
-            Err(InstructionParseError::UnknownDiscriminatorVec(_))
+            Err(InstructionParseError::UnknownDiscriminator(_))
         ));
     }
 
