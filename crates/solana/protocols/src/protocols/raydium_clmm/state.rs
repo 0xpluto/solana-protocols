@@ -208,6 +208,20 @@ impl PoolState {
     }
 }
 
+/// The pool account names both mints outright, so it answers without a second
+/// read. See [`NamesPair`](crate::pairs::NamesPair) for why only complete
+/// layouts implement it.
+impl crate::pairs::NamesPair for PoolState {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.token_mint_0, self.token_mint_1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

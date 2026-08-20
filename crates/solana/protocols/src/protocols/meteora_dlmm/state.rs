@@ -382,6 +382,25 @@ fn decode_with_discriminator<T: BorshDeserialize>(
         .map_err(|e| Error::parse_error(format!("{label}: borsh decode failed: {e}")))
 }
 
+/// The pool account names both mints outright, so it answers without a second
+/// read. See [`NamesPair`](crate::pairs::NamesPair) for why only complete
+/// layouts implement it.
+impl crate::pairs::NamesPair for LbPair {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        // The SDK's pubkey type differs from ours by version only; the bytes
+        // are identical. See [`dlmm_sdk_pubkey!`].
+        (
+            crate::dlmm_sdk_pubkey!(self.token_x_mint),
+            crate::dlmm_sdk_pubkey!(self.token_y_mint),
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

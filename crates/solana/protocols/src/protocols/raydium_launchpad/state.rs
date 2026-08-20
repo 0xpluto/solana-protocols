@@ -44,7 +44,9 @@ impl PoolStatus {
 
 /// Vesting schedule for token unlocks.
 #[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
-#[state(unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK")]
+#[state(
+    unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK"
+)]
 #[state(no_discriminator)]
 pub struct VestingSchedule {
     /// Total locked token amount.
@@ -67,7 +69,9 @@ pub struct VestingSchedule {
 ///
 /// NOTE: Trailing 62-byte padding omitted — bincode ignores extra bytes.
 #[derive(Debug, Clone, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
-#[state(unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK")]
+#[state(
+    unverified = "no vendored IDL for this program, so there is nothing to compare the field names against; the layout came from observation and the SDK"
+)]
 #[state(discriminator = LAUNCHPAD_POOL_STATE_DISCRIMINATOR)]
 #[state(fixtures("raydium_launchpad/pool_account.json"))]
 pub struct LaunchpadPoolState {
@@ -183,6 +187,20 @@ impl LaunchpadPoolState {
         }
         let decimal_adj = 10f64.powi(self.base_decimals as i32 - self.quote_decimals as i32);
         (quote as f64 / base as f64) * decimal_adj
+    }
+}
+
+/// The pool account names both mints outright, so it answers without a second
+/// read. See [`NamesPair`](crate::pairs::NamesPair) for why only complete
+/// layouts implement it.
+impl crate::pairs::NamesPair for LaunchpadPoolState {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.base_mint, self.quote_mint)
     }
 }
 

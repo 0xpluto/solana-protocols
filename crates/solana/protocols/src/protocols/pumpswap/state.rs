@@ -27,6 +27,20 @@ use serde::{Deserialize, Serialize};
 use solana_program::pubkey::Pubkey;
 use solana_protocols_macros::OnchainState;
 
+/// The pool account names both mints outright, so it answers without a second
+/// read. See [`NamesPair`](crate::pairs::NamesPair) for why only complete
+/// layouts implement it.
+impl crate::pairs::NamesPair for PumpSwapPool {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.base_mint, self.quote_mint)
+    }
+}
+
 #[cfg(test)]
 use super::constants::POOL_ACCOUNT_SIZE;
 use super::constants::POOL_DISCRIMINATOR;

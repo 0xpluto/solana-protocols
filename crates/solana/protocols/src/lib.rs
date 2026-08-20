@@ -116,6 +116,7 @@ pub mod error;
 pub mod events;
 pub mod idl;
 pub mod metaplex;
+pub mod pairs;
 pub mod parsing;
 pub mod platform;
 pub mod protocols;

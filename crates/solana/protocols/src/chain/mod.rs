@@ -10,17 +10,20 @@
 //!        → chain::extract_transaction  → ParsedTransaction
 //! ```
 
+mod discovery;
 mod extract;
+mod graph;
 mod types;
 
+pub use discovery::{discover, Discovery, PoolEdge};
 pub use extract::{
     child_event, corroborate, extract_failure_tally, extract_failures, extract_transaction,
-    report_extract_failure, ExtractContext, ExtractError, ExtractFn, Extracted, ExtractorRegistry,
-    ExtractsCreation, ExtractsCreatorFee, optional_child_event, ExtractsLiquidity, ExtractsMigration, ExtractsSwap, NoContext,
-    ProtocolExtractor, TransactionHeader,
+    optional_child_event, report_extract_failure, ExtractContext, ExtractError, ExtractFn,
+    Extracted, ExtractorRegistry, ExtractsCreation, ExtractsCreatorFee, ExtractsLiquidity,
+    ExtractsMigration, ExtractsSwap, NoContext, ProtocolExtractor, TransactionHeader,
 };
+pub use graph::{Observed, PoolGraph};
 pub use types::{
-    Liquidity,
-    ChainEvent, CreatorFee, CreatorPayout, CurveState, Migration, ParsedTransaction, Swap,
-    TokenBalanceChange, TokenBalanceEntry, TokenCreation, TxError, TxOutcome,
+    ChainEvent, CreatorFee, CreatorPayout, CurveState, Liquidity, Migration, ParsedTransaction,
+    Swap, TokenBalanceChange, TokenBalanceEntry, TokenCreation, TxError, TxOutcome,
 };

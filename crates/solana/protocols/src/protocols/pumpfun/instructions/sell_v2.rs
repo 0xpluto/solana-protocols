@@ -40,6 +40,24 @@ pub struct SellV2Params {
     pub min_sol_output: u64,
 }
 
+impl crate::pairs::NamesPair for SellV2Accounts {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.base_mint, self.quote_mint)
+    }
+}
+
+/// See [`BuyV2Accounts`](super::buy_v2::BuyV2Accounts).
+impl crate::pairs::SwapAccounts for SellV2Accounts {
+    fn pool(&self) -> solana_program::pubkey::Pubkey {
+        self.bonding_curve
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

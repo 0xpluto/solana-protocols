@@ -44,6 +44,25 @@ pub struct BuyV2Params {
     pub max_sol_cost: u64,
 }
 
+impl crate::pairs::NamesPair for BuyV2Accounts {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.base_mint, self.quote_mint)
+    }
+}
+
+/// v2 names both sides, so a curve quoted in something other than SOL is read
+/// correctly instead of being labelled SOL.
+impl crate::pairs::SwapAccounts for BuyV2Accounts {
+    fn pool(&self) -> solana_program::pubkey::Pubkey {
+        self.bonding_curve
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

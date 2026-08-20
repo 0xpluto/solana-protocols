@@ -124,7 +124,6 @@ pub struct BuyAccounts {
                   rather than layout, and none is derivable from this instruction"
     )]
     pub buyback_vaults: Vec<Pubkey>,
-
 }
 
 impl BuyAccounts {
@@ -163,13 +162,9 @@ impl BuyAccounts {
             // Appended: the cashback accumulator's quote account and any
             // buyback vaults. A builder emits what it can derive; which vaults
             // to credit is the caller's choice, so none by default.
-            appended_quote_volume_accumulator:
-                crate::parsing::accounts::Conditional::Present(
-                    spl_associated_token_account::get_associated_token_address(
-                        &uva,
-                        &keys.quote_mint,
-                    ),
-                ),
+            appended_quote_volume_accumulator: crate::parsing::accounts::Conditional::Present(
+                spl_associated_token_account::get_associated_token_address(&uva, &keys.quote_mint),
+            ),
             buyback_vaults: Vec::new(),
         }
     }
@@ -356,6 +351,23 @@ impl BuyBuilder {
             true,
         )
         .expect("BuyBuilder::build_swap_with_setup should not fail")
+    }
+}
+
+impl crate::pairs::NamesPair for BuyAccounts {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.base_mint, self.quote_mint)
+    }
+}
+
+impl crate::pairs::SwapAccounts for BuyAccounts {
+    fn pool(&self) -> solana_program::pubkey::Pubkey {
+        self.pool
     }
 }
 

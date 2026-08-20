@@ -18,10 +18,9 @@ use crate::traits::InstructionBuilder;
 
 use super::super::accounts::PumpfunKeys;
 use super::super::constants::{
-    BONDING_CURVE_SEED, BUY_DISCRIMINATOR, EVENT_AUTHORITY_PDA, FEE_COLLECTOR, FEE_CONFIG_PDA,
-    GLOBAL_PDA, GLOBAL_VOLUME_ACCUMULATOR_PDA, PROGRAM_ID, PUMP_FEES_PROGRAM_ID,
-    USER_VOLUME_ACCUMULATOR_SEED,
-    BONDING_CURVE_V2_SEED,
+    BONDING_CURVE_SEED, BONDING_CURVE_V2_SEED, BUY_DISCRIMINATOR, EVENT_AUTHORITY_PDA,
+    FEE_COLLECTOR, FEE_CONFIG_PDA, GLOBAL_PDA, GLOBAL_VOLUME_ACCUMULATOR_PDA, PROGRAM_ID,
+    PUMP_FEES_PROGRAM_ID, USER_VOLUME_ACCUMULATOR_SEED,
 };
 
 /// Account list for pump.fun buy instruction.
@@ -137,7 +136,6 @@ pub struct BuyAccounts {
                   rather than layout, and none is derivable from this instruction"
     )]
     pub buyback_vaults: Vec<Pubkey>,
-
 }
 
 impl BuyAccounts {
@@ -333,6 +331,26 @@ impl BuyBuilder {
     ) -> Vec<Instruction> {
         Self::build_swap_with_setup(keys, user, BuyParams::new(token_amount, max_sol_cost), true)
             .expect("BuyBuilder::build_swap_with_setup should not fail")
+    }
+}
+
+impl crate::pairs::NamesPair for BuyAccounts {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.mint, crate::tokens::WSOL)
+    }
+}
+
+/// A v1 curve is quoted in SOL, so the quote side is a constant rather than a
+/// field. `WSOL` is the mint id for it; a route through this edge that starts
+/// from native lamports needs its own wrap leg.
+impl crate::pairs::SwapAccounts for BuyAccounts {
+    fn pool(&self) -> solana_program::pubkey::Pubkey {
+        self.bonding_curve
     }
 }
 

@@ -125,7 +125,6 @@ pub struct SellAccounts {
                   rather than layout, and none is derivable from this instruction"
     )]
     pub buyback_vaults: Vec<Pubkey>,
-
 }
 
 impl SellAccounts {
@@ -161,15 +160,10 @@ impl SellAccounts {
             fee_program: FEE_PROGRAM,
             // Appended: the cashback accumulator and its quote account. Sell
             // declares no slot for the accumulator, so it can only arrive here.
-            appended_user_volume_accumulator:
-                crate::parsing::accounts::Conditional::Present(uva),
-            appended_quote_volume_accumulator:
-                crate::parsing::accounts::Conditional::Present(
-                    spl_associated_token_account::get_associated_token_address(
-                        &uva,
-                        &keys.quote_mint,
-                    ),
-                ),
+            appended_user_volume_accumulator: crate::parsing::accounts::Conditional::Present(uva),
+            appended_quote_volume_accumulator: crate::parsing::accounts::Conditional::Present(
+                spl_associated_token_account::get_associated_token_address(&uva, &keys.quote_mint),
+            ),
             buyback_vaults: Vec::new(),
         }
     }
@@ -209,7 +203,9 @@ pub struct SellParams {
     /// [`OptionBool`](crate::protocols::OptionBool) and not a `bool`: the
     /// encodings are not interchangeable between the two programs, and a type
     /// that fixed the width would decode one of them wrongly.
-    #[idl(undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures")]
+    #[idl(
+        undeclared = "senders emit a trailing track_volume that neither the vendored nor the live on-chain IDL declares; the bytes are in the fixtures"
+    )]
     pub track_volume: OptionBool,
 }
 
@@ -281,6 +277,23 @@ impl SellBuilder {
             SellParams::new(base_amount_in, min_quote_amount_out),
         )
         .expect("SellBuilder::build_swap_instruction should not fail")
+    }
+}
+
+impl crate::pairs::NamesPair for SellAccounts {
+    fn pair(
+        &self,
+    ) -> (
+        solana_program::pubkey::Pubkey,
+        solana_program::pubkey::Pubkey,
+    ) {
+        (self.base_mint, self.quote_mint)
+    }
+}
+
+impl crate::pairs::SwapAccounts for SellAccounts {
+    fn pool(&self) -> solana_program::pubkey::Pubkey {
+        self.pool
     }
 }
 
