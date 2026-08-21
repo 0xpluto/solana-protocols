@@ -86,7 +86,9 @@ pub use instructions::{
     BuyAccounts,
     // Instruction builders
     BuyBuilder,
+    BuyExactQuoteInV2Accounts,
     BuyExactQuoteInV2Params,
+    BuyExactSolInAccounts,
     BuyExactSolInParams,
     BuyParams,
     BuyV2Accounts,

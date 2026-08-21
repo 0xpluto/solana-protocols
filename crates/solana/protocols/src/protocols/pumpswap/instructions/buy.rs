@@ -12,8 +12,8 @@ use solana_sdk::instruction::Instruction;
 
 use super::super::accounts::PumpSwapKeys;
 use super::super::constants::{
-    BUY_DISCRIMINATOR, BUY_EXACT_QUOTE_IN_DISCRIMINATOR, EVENT_AUTHORITY, FEE_CONFIG, FEE_PROGRAM,
-    GLOBAL_CONFIG, GLOBAL_VOLUME_ACCUMULATOR, PROGRAM_ID, PROTOCOL_FEE_RECIPIENT,
+    BUY_DISCRIMINATOR, EVENT_AUTHORITY, FEE_CONFIG, FEE_PROGRAM, GLOBAL_CONFIG,
+    GLOBAL_VOLUME_ACCUMULATOR, PROGRAM_ID, PROTOCOL_FEE_RECIPIENT,
     PROTOCOL_FEE_RECIPIENT_TOKEN_ACCOUNT,
 };
 use crate::error::Result;
@@ -29,11 +29,7 @@ use crate::traits::InstructionBuilder;
     "pumpswap/ix_buy.json",
     "pumpswap/ix_buy_n25.json",
     "pumpswap/ix_buy_n26.json",
-    "pumpswap/ix_buy_n27.json",
-    "pumpswap/ix_buy_exact_quote_in_n25.json",
-    "pumpswap/ix_buy_exact_quote_in_n26.json",
-    "pumpswap/ix_buy_exact_quote_in_n27.json",
-    "pumpswap/ix_buy_exact_quote_in_n30.json"
+    "pumpswap/ix_buy_n27.json"
 ))]
 pub struct BuyAccounts {
     /// Pool state account.
@@ -199,37 +195,7 @@ pub struct BuyParams {
     pub track_volume: crate::protocols::OptionBool,
 }
 
-/// PumpSwap `buy_exact_quote_in` parameters.
-///
-/// Mirror image of [`BuyParams`]: the trader pins the quote spent rather than
-/// the base received. Executed amounts still come from the emitted `BuyEvent`,
-/// so extraction is shared — these params are slippage bounds, as ever.
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Deserialize,
-    borsh::BorshDeserialize,
-    borsh::BorshSerialize,
-    InstructionData,
-)]
-#[instruction_data(discriminator = BUY_EXACT_QUOTE_IN_DISCRIMINATOR, fixtures(
-    "pumpswap/ix_buy_exact_quote_in_n25.json",
-    "pumpswap/ix_buy_exact_quote_in_n26.json",
-    "pumpswap/ix_buy_exact_quote_in_n27.json",
-    "pumpswap/ix_buy_exact_quote_in_n30.json"
-))]
-pub struct BuyExactQuoteInParams {
-    /// Quote (SOL) the trader is willing to spend — the pinned side.
-    pub spendable_quote_in: u64,
-    /// Minimum base tokens to accept.
-    pub min_base_amount_out: u64,
-    /// Trailing `OptionBool` — see [`BuyParams::track_volume`].
-    pub track_volume: crate::protocols::OptionBool,
-}
-
 /// `buy_exact_quote_in` uses the same accounts as `buy`.
-pub type BuyExactQuoteInAccounts = BuyAccounts;
 
 impl BuyParams {
     /// Create new buy parameters.

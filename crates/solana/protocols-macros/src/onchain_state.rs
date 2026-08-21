@@ -122,6 +122,24 @@ pub fn derive(input: TokenStream) -> TokenStream {
     // asserting SOL on coins quoted in USDC — and dropped a trailing mint. The
     // check existed for a day as opt-in, which is the same hole one step later:
     // a new layout that simply omits the attribute is a layout nobody compares.
+    // Bytes, not just names: the IDL gate below proves the field *names* match
+    // the program's, and a golden fixture proves the *layout* decodes real
+    // account data. Neither substitutes for the other -- a struct can agree
+    // with the IDL and still misread an account whose on-chain size the IDL
+    // does not describe. Three nested structs reached this state before the
+    // census found them: no fixture, no reason, nothing to grep.
+    if fixtures.is_empty() && unverified.as_ref().is_none_or(|r| r.trim().len() < 12) {
+        return syn::Error::new_spanned(
+            name,
+            "an account layout needs fixtures(\"…\") — one real account per on-chain \
+             size observed — or #[state(unverified = \"why not\")]. A layout never \
+             decoded from bytes the chain actually wrote is unproven however well it \
+             matches the IDL",
+        )
+        .to_compile_error()
+        .into();
+    }
+
     if idl.is_none() && unverified.as_ref().is_none_or(|r| r.trim().len() < 12) {
         return syn::Error::new_spanned(
             name,

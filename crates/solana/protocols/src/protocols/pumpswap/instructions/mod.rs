@@ -4,13 +4,15 @@
 //! The `ProtocolInstruction` derive macro generates dispatch, accounts enum, and event struct.
 
 pub mod buy;
+pub mod buy_exact_quote_in;
 mod collect_coin_creator_fee;
 pub mod create_pool;
 pub mod deposit;
 pub mod sell;
 pub mod withdraw;
 
-pub use buy::{BuyAccounts, BuyBuilder, BuyExactQuoteInAccounts, BuyExactQuoteInParams, BuyParams};
+pub use buy::{BuyAccounts, BuyBuilder, BuyParams};
+pub use buy_exact_quote_in::{BuyExactQuoteInAccounts, BuyExactQuoteInParams};
 pub use collect_coin_creator_fee::CollectCoinCreatorFeeAccounts;
 pub use create_pool::{CreatePoolAccounts, CreatePoolParams};
 pub use deposit::{DepositAccounts, DepositParams};

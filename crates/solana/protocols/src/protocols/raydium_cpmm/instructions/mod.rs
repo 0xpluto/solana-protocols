@@ -5,8 +5,8 @@
 pub mod swap;
 
 pub use swap::{
-    SwapAccounts, SwapBaseInputBuilder, SwapBaseInputBuilderConfig, SwapBaseInputParams,
-    SwapBaseOutputParams,
+    SwapAccounts, SwapBaseInputAccounts, SwapBaseInputBuilder, SwapBaseInputBuilderConfig,
+    SwapBaseInputParams, SwapBaseOutputAccounts, SwapBaseOutputParams,
 };
 
 use crate::parsing::{ClassifiesAsSwap, SwapAmount, SwapClassification};

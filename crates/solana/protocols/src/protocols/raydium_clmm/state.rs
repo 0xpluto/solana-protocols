@@ -106,6 +106,9 @@ pub struct PoolState {
 #[derive(Deserialize, Serialize, Debug, Clone, Default, borsh::BorshDeserialize, OnchainState)]
 #[idl(program = "raydium_clmm", account = "RewardInfo")]
 #[state(no_discriminator)]
+#[state(
+    unverified = "not an account of its own: a field inside PoolState, decoded as part of it and pinned by that account's golden fixture. A fixture here would capture bytes no program ever writes standalone"
+)]
 pub struct RewardInfo {
     /// Reward state (0=uninitialized, 1=initialized, 2=opening, 3=ended).
     pub reward_state: u8,

@@ -34,13 +34,11 @@ use super::super::constants::{
 /// recover it, so we take it as given.
 #[derive(Debug, Clone, AccountMetas, BuildAccounts, OnchainInstruction)]
 #[idl(program = "pump", instruction = "buy")]
-#[build(fixture = "pumpfun/ix_buy.json")]
+#[build(fixture = "pumpfun/ix_buy_n19.json")]
 #[onchain_ix(fixtures(
     "pumpfun/ix_buy.json",
     "pumpfun/ix_buy_n18.json",
-    "pumpfun/ix_buy_n19.json",
-    "pumpfun/ix_buy_exact_sol_in_n18.json",
-    "pumpfun/ix_buy_exact_sol_in_n19.json"
+    "pumpfun/ix_buy_n19.json"
 ))]
 pub struct BuyAccounts {
     /// Global state PDA.

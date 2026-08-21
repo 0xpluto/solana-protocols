@@ -319,6 +319,234 @@ impl SellExactInBuilder {
     }
 }
 
+/// Account list for `buy_exact_in`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct BuyExactInAccounts {
+    /// User wallet (signer).
+    #[account(signer, writable)]
+    pub payer: Pubkey,
+    /// Vault authority PDA.
+    #[account]
+    pub authority: Pubkey,
+    /// Global config account.
+    #[account]
+    pub global_config: Pubkey,
+    /// Platform config account.
+    #[account]
+    pub platform_config: Pubkey,
+    /// Pool state account.
+    #[account(writable)]
+    pub pool_state: Pubkey,
+    /// User's base (launchpad) token account.
+    #[account(writable)]
+    pub user_base_token: Pubkey,
+    /// User's quote token account.
+    #[account(writable)]
+    pub user_quote_token: Pubkey,
+    /// Pool's base token vault.
+    #[account(writable)]
+    pub base_vault: Pubkey,
+    /// Pool's quote token vault.
+    #[account(writable)]
+    pub quote_vault: Pubkey,
+    /// Base token mint.
+    #[account]
+    pub base_token_mint: Pubkey,
+    /// Quote token mint.
+    #[account]
+    pub quote_token_mint: Pubkey,
+    /// Base token program (SPL Token or Token2022).
+    #[account]
+    pub base_token_program: Pubkey,
+    /// Quote token program.
+    #[account]
+    pub quote_token_program: Pubkey,
+    /// Event authority PDA.
+    #[account]
+    pub event_authority: Pubkey,
+    /// Launchpad program ID.
+    #[account]
+    pub program: Pubkey,
+}
+
+/// Account list for `buy_exact_out`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct BuyExactOutAccounts {
+    /// User wallet (signer).
+    #[account(signer, writable)]
+    pub payer: Pubkey,
+    /// Vault authority PDA.
+    #[account]
+    pub authority: Pubkey,
+    /// Global config account.
+    #[account]
+    pub global_config: Pubkey,
+    /// Platform config account.
+    #[account]
+    pub platform_config: Pubkey,
+    /// Pool state account.
+    #[account(writable)]
+    pub pool_state: Pubkey,
+    /// User's base (launchpad) token account.
+    #[account(writable)]
+    pub user_base_token: Pubkey,
+    /// User's quote token account.
+    #[account(writable)]
+    pub user_quote_token: Pubkey,
+    /// Pool's base token vault.
+    #[account(writable)]
+    pub base_vault: Pubkey,
+    /// Pool's quote token vault.
+    #[account(writable)]
+    pub quote_vault: Pubkey,
+    /// Base token mint.
+    #[account]
+    pub base_token_mint: Pubkey,
+    /// Quote token mint.
+    #[account]
+    pub quote_token_mint: Pubkey,
+    /// Base token program (SPL Token or Token2022).
+    #[account]
+    pub base_token_program: Pubkey,
+    /// Quote token program.
+    #[account]
+    pub quote_token_program: Pubkey,
+    /// Event authority PDA.
+    #[account]
+    pub event_authority: Pubkey,
+    /// Launchpad program ID.
+    #[account]
+    pub program: Pubkey,
+}
+
+/// Account list for `sell_exact_in`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct SellExactInAccounts {
+    /// User wallet (signer).
+    #[account(signer, writable)]
+    pub payer: Pubkey,
+    /// Vault authority PDA.
+    #[account]
+    pub authority: Pubkey,
+    /// Global config account.
+    #[account]
+    pub global_config: Pubkey,
+    /// Platform config account.
+    #[account]
+    pub platform_config: Pubkey,
+    /// Pool state account.
+    #[account(writable)]
+    pub pool_state: Pubkey,
+    /// User's base (launchpad) token account.
+    #[account(writable)]
+    pub user_base_token: Pubkey,
+    /// User's quote token account.
+    #[account(writable)]
+    pub user_quote_token: Pubkey,
+    /// Pool's base token vault.
+    #[account(writable)]
+    pub base_vault: Pubkey,
+    /// Pool's quote token vault.
+    #[account(writable)]
+    pub quote_vault: Pubkey,
+    /// Base token mint.
+    #[account]
+    pub base_token_mint: Pubkey,
+    /// Quote token mint.
+    #[account]
+    pub quote_token_mint: Pubkey,
+    /// Base token program (SPL Token or Token2022).
+    #[account]
+    pub base_token_program: Pubkey,
+    /// Quote token program.
+    #[account]
+    pub quote_token_program: Pubkey,
+    /// Event authority PDA.
+    #[account]
+    pub event_authority: Pubkey,
+    /// Launchpad program ID.
+    #[account]
+    pub program: Pubkey,
+}
+
+/// Account list for `sell_exact_out`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct SellExactOutAccounts {
+    /// User wallet (signer).
+    #[account(signer, writable)]
+    pub payer: Pubkey,
+    /// Vault authority PDA.
+    #[account]
+    pub authority: Pubkey,
+    /// Global config account.
+    #[account]
+    pub global_config: Pubkey,
+    /// Platform config account.
+    #[account]
+    pub platform_config: Pubkey,
+    /// Pool state account.
+    #[account(writable)]
+    pub pool_state: Pubkey,
+    /// User's base (launchpad) token account.
+    #[account(writable)]
+    pub user_base_token: Pubkey,
+    /// User's quote token account.
+    #[account(writable)]
+    pub user_quote_token: Pubkey,
+    /// Pool's base token vault.
+    #[account(writable)]
+    pub base_vault: Pubkey,
+    /// Pool's quote token vault.
+    #[account(writable)]
+    pub quote_vault: Pubkey,
+    /// Base token mint.
+    #[account]
+    pub base_token_mint: Pubkey,
+    /// Quote token mint.
+    #[account]
+    pub quote_token_mint: Pubkey,
+    /// Base token program (SPL Token or Token2022).
+    #[account]
+    pub base_token_program: Pubkey,
+    /// Quote token program.
+    #[account]
+    pub quote_token_program: Pubkey,
+    /// Event authority PDA.
+    #[account]
+    pub event_authority: Pubkey,
+    /// Launchpad program ID.
+    #[account]
+    pub program: Pubkey,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

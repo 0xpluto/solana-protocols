@@ -54,8 +54,8 @@ mod sell;
 mod sell_v2;
 
 pub use buy::{BuyAccounts, BuyBuilder, BuyParams};
-pub use buy_exact_quote_in_v2::BuyExactQuoteInV2Params;
-pub use buy_exact_sol_in::BuyExactSolInParams;
+pub use buy_exact_quote_in_v2::{BuyExactQuoteInV2Accounts, BuyExactQuoteInV2Params};
+pub use buy_exact_sol_in::{BuyExactSolInAccounts, BuyExactSolInParams};
 pub use buy_v2::{BuyV2Accounts, BuyV2Params};
 pub use collect_creator_fee::{CollectCreatorFeeAccounts, CollectCreatorFeeParams};
 pub use collect_creator_fee_v2::{CollectCreatorFeeV2Accounts, CollectCreatorFeeV2Params};

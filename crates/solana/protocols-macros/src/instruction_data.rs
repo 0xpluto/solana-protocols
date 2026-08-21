@@ -273,8 +273,41 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
     };
 
+    // A discriminator is an instruction, and every instruction owns its own
+    // accounts struct, in its own file, named after it.
+    //
+    // Sharing one accounts struct across discriminators reads as economy and
+    // is not: a positional read of pubkeys succeeds whatever the true slot
+    // order is, so a borrowed struct produces confident values from unverified
+    // slots. `buy_exact_quote_in` rode `buy`'s struct through a 30-account
+    // shape `buy` has never been seen in, absorbed by a trailing `Vec`, and
+    // nothing failed. Duplicating the struct duplicates the *proof* -- its own
+    // golden fixture, its own IDL check -- which is the point, and it is also
+    // simply what a reader expects to find when they open the file.
+    //
+    // Rust cannot see a file from a derive, so this enforces the naming
+    // pairing; a sibling aliased into scope is caught by the source-level
+    // audit instead.
+    let Some(base) = name.to_string().strip_suffix("Params").map(str::to_owned) else {
+        return syn::Error::new_spanned(
+            name,
+            "an instruction's arguments struct must be named `<Instruction>Params`,              so its accounts struct can be required by name",
+        )
+        .to_compile_error()
+        .into();
+    };
+    let accounts_ident = syn::Ident::new(&format!("{base}Accounts"), name.span());
+
     let disc_ty = quote! { [u8; #disc_size] };
     quote! {
+        const _: () = {
+            fn every_discriminator_owns_its_accounts_struct<
+                T: crate::parsing::FromAccountKeys,
+            >() {
+            }
+            let _ = every_discriminator_owns_its_accounts_struct::<#accounts_ident>;
+        };
+
         impl #impl_generics #name #ty_generics #where_clause {
             /// This instruction's discriminator.
             pub const DISCRIMINATOR: #disc_ty = #discriminator;

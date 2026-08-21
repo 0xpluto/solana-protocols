@@ -48,8 +48,8 @@ pub mod state;
 pub use accounts::RaydiumCpmmKeys;
 pub use constants::*;
 pub use instructions::{
-    RaydiumCpmmInstruction, SwapAccounts, SwapBaseInputBuilder, SwapBaseInputBuilderConfig,
-    SwapBaseInputParams, SwapBaseOutputParams,
+    RaydiumCpmmInstruction, SwapAccounts, SwapBaseInputAccounts, SwapBaseInputBuilder,
+    SwapBaseInputBuilderConfig, SwapBaseInputParams, SwapBaseOutputAccounts, SwapBaseOutputParams,
 };
 pub use math::{calculate_cpmm_swap, CpmmPoolWithReserves};
 pub use state::CpmmPoolState;

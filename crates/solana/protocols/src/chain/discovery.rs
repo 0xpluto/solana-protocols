@@ -125,16 +125,15 @@ pub fn discover(ix: &ParsedInstruction) -> Discovery {
         SwapInstruction::PumpSwapSell => {
             read::<pumpswap::SellAccounts>(instruction, keys, Protocol::PumpSwap)
         }
-        // No accounts struct of their own. Each is documented as sharing a
-        // sibling's layout, but a positional read of pubkeys succeeds whatever
-        // the order is, so borrowing the sibling's struct would produce
-        // confident edges built from unverified slots. Deriving the pool from
-        // the mints settles it -- until then these are a named gap, not a
-        // guess. `buy_exact_quote_in` even has a 30-account shape its sibling
-        // has never been seen in.
-        SwapInstruction::PumpfunBuyExactSolIn
-        | SwapInstruction::PumpfunBuyExactQuoteInV2
-        | SwapInstruction::PumpSwapBuyExactQuoteIn => Discovery::Unreadable(instruction),
+        SwapInstruction::PumpfunBuyExactSolIn => {
+            read::<pumpfun::BuyExactSolInAccounts>(instruction, keys, Protocol::Pumpfun)
+        }
+        SwapInstruction::PumpfunBuyExactQuoteInV2 => {
+            read::<pumpfun::BuyExactQuoteInV2Accounts>(instruction, keys, Protocol::Pumpfun)
+        }
+        SwapInstruction::PumpSwapBuyExactQuoteIn => {
+            read::<pumpswap::BuyExactQuoteInAccounts>(instruction, keys, Protocol::PumpSwap)
+        }
         SwapInstruction::Unknown(_) => Discovery::NotASwap,
     }
 }

@@ -113,10 +113,7 @@ mod tests {
 #[onchain_ix(fixtures(
     "pumpfun/ix_buy_v2_n27.json",
     "pumpfun/ix_buy_v2_n28.json",
-    "pumpfun/ix_buy_v2_n29.json",
-    "pumpfun/ix_buy_exact_quote_in_v2_n27.json",
-    "pumpfun/ix_buy_exact_quote_in_v2_n28.json",
-    "pumpfun/ix_buy_exact_quote_in_v2_n29.json"
+    "pumpfun/ix_buy_v2_n29.json"
 ))]
 #[accounts(program_id = super::super::constants::PROGRAM_ID)]
 #[idl(program = "pump", instruction = "buy_v2")]

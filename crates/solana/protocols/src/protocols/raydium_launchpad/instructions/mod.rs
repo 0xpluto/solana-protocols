@@ -5,8 +5,9 @@
 pub mod swap;
 
 pub use swap::{
-    BuyExactInBuilder, BuyExactInParams, BuyExactOutParams, SellExactInBuilder, SellExactInParams,
-    SellExactOutParams, SwapAccounts,
+    BuyExactInAccounts, BuyExactInBuilder, BuyExactInParams, BuyExactOutAccounts,
+    BuyExactOutParams, SellExactInAccounts, SellExactInBuilder, SellExactInParams,
+    SellExactOutAccounts, SellExactOutParams, SwapAccounts,
 };
 
 use crate::parsing::{ClassifiesAsSwap, SwapAmount, SwapClassification};

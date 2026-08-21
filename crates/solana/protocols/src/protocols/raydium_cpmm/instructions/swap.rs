@@ -284,6 +284,108 @@ impl SwapBaseInputBuilder {
     }
 }
 
+/// Account list for `swap_base_input`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct SwapBaseInputAccounts {
+    /// User wallet (signer).
+    #[account(signer, writable)]
+    pub payer: Pubkey,
+    /// Vault authority PDA.
+    #[account]
+    pub authority: Pubkey,
+    /// AMM config account.
+    #[account]
+    pub amm_config: Pubkey,
+    /// Pool state account.
+    #[account(writable)]
+    pub pool_state: Pubkey,
+    /// User's input token account.
+    #[account(writable)]
+    pub input_token_account: Pubkey,
+    /// User's output token account.
+    #[account(writable)]
+    pub output_token_account: Pubkey,
+    /// Pool's input token vault.
+    #[account(writable)]
+    pub input_vault: Pubkey,
+    /// Pool's output token vault.
+    #[account(writable)]
+    pub output_vault: Pubkey,
+    /// Input token program (SPL Token or Token2022).
+    #[account]
+    pub input_token_program: Pubkey,
+    /// Output token program.
+    #[account]
+    pub output_token_program: Pubkey,
+    /// Input token mint.
+    #[account]
+    pub input_token_mint: Pubkey,
+    /// Output token mint.
+    #[account]
+    pub output_token_mint: Pubkey,
+    /// Oracle observation state.
+    #[account(writable)]
+    pub observation_state: Pubkey,
+}
+
+/// Account list for `swap_base_output`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct SwapBaseOutputAccounts {
+    /// User wallet (signer).
+    #[account(signer, writable)]
+    pub payer: Pubkey,
+    /// Vault authority PDA.
+    #[account]
+    pub authority: Pubkey,
+    /// AMM config account.
+    #[account]
+    pub amm_config: Pubkey,
+    /// Pool state account.
+    #[account(writable)]
+    pub pool_state: Pubkey,
+    /// User's input token account.
+    #[account(writable)]
+    pub input_token_account: Pubkey,
+    /// User's output token account.
+    #[account(writable)]
+    pub output_token_account: Pubkey,
+    /// Pool's input token vault.
+    #[account(writable)]
+    pub input_vault: Pubkey,
+    /// Pool's output token vault.
+    #[account(writable)]
+    pub output_vault: Pubkey,
+    /// Input token program (SPL Token or Token2022).
+    #[account]
+    pub input_token_program: Pubkey,
+    /// Output token program.
+    #[account]
+    pub output_token_program: Pubkey,
+    /// Input token mint.
+    #[account]
+    pub input_token_mint: Pubkey,
+    /// Output token mint.
+    #[account]
+    pub output_token_mint: Pubkey,
+    /// Oracle observation state.
+    #[account(writable)]
+    pub observation_state: Pubkey,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -50,8 +50,9 @@ pub mod state;
 pub use accounts::{derive_authority, resolve_token_programs, LaunchpadKeys};
 pub use constants::*;
 pub use instructions::{
-    BuyExactInBuilder, BuyExactInParams, BuyExactOutParams, RaydiumLaunchpadInstruction,
-    SellExactInBuilder, SellExactInParams, SellExactOutParams, SwapAccounts,
+    BuyExactInAccounts, BuyExactInBuilder, BuyExactInParams, BuyExactOutAccounts,
+    BuyExactOutParams, RaydiumLaunchpadInstruction, SellExactInAccounts, SellExactInBuilder,
+    SellExactInParams, SellExactOutAccounts, SellExactOutParams, SwapAccounts,
 };
 pub use math::{calculate_launchpad_swap, LaunchpadSwapPool};
 pub use state::LaunchpadPoolState;

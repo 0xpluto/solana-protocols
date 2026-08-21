@@ -36,8 +36,8 @@ pub mod state;
 pub use accounts::DbcKeys;
 pub use constants::*;
 pub use instructions::{
-    MeteoraDbcInstruction, Swap2Params, SwapAccounts, SwapBuilder, SwapBuilderConfig, SwapMode,
-    SwapParams,
+    MeteoraDbcInstruction, Swap2Accounts, Swap2Params, SwapAccounts, SwapBuilder,
+    SwapBuilderConfig, SwapMode, SwapParams,
 };
 pub use math::{calculate_dbc_swap, DbcSwapPool, DEFAULT_FEE_RATE};
 pub use state::VirtualPool;

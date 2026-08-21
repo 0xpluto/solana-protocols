@@ -292,6 +292,63 @@ impl SwapBuilder {
     }
 }
 
+/// Account list for `swap2`.
+///
+/// A copy of its sibling's layout rather than a shared struct: every
+/// discriminator owns its own accounts struct, so each one's IDL entry is
+/// checked and each one's fixtures pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct Swap2Accounts {
+    /// Pool authority PDA (constant across all pools).
+    #[account]
+    pub pool_authority: Pubkey,
+    /// Pool config account.
+    #[account]
+    pub config: Pubkey,
+    /// Pool (VirtualPool) account.
+    #[account(writable)]
+    pub pool: Pubkey,
+    /// User's input token account.
+    #[account(writable)]
+    pub input_token_account: Pubkey,
+    /// User's output token account.
+    #[account(writable)]
+    pub output_token_account: Pubkey,
+    /// Pool's base token vault.
+    #[account(writable)]
+    pub base_vault: Pubkey,
+    /// Pool's quote token vault.
+    #[account(writable)]
+    pub quote_vault: Pubkey,
+    /// Base token mint.
+    #[account]
+    pub base_mint: Pubkey,
+    /// Quote token mint.
+    #[account]
+    pub quote_mint: Pubkey,
+    /// User wallet (signer).
+    #[account(signer)]
+    pub payer: Pubkey,
+    /// Base token program (SPL Token or Token2022).
+    #[account]
+    pub token_base_program: Pubkey,
+    /// Quote token program.
+    #[account]
+    pub token_quote_program: Pubkey,
+    /// Referral token account (optional, uses program ID if no referral).
+    #[account(writable)]
+    pub referral_token_account: Pubkey,
+    /// Event authority PDA.
+    #[account]
+    pub event_authority: Pubkey,
+    /// DBC program ID.
+    #[account]
+    pub program: Pubkey,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

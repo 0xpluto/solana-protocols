@@ -227,7 +227,88 @@ impl SwapBaseOutParams {
 /// SwapBaseOut instruction accounts.
 ///
 /// Same layout as SwapBaseIn.
-pub type SwapBaseOutAccounts = SwapBaseInAccounts;
+/// Account list for Raydium V4 `swap_base_out`.
+///
+/// A copy of `swap_base_in`'s layout rather than an alias: every
+/// discriminator owns its own accounts struct, so each one's fixtures and
+/// IDL entry pin only itself.
+#[derive(Debug, Clone, AccountMetas)]
+#[accounts(
+    unverified = "this protocol is not modelled to the pumpfun/pumpswap standard yet; a golden fixture here would claim a verification the rest of the vertical does not have"
+)]
+pub struct SwapBaseOutAccounts {
+    /// Token program.
+    #[account]
+    pub token_program: Pubkey,
+
+    /// AMM ID (pool account).
+    #[account(writable)]
+    pub amm_id: Pubkey,
+
+    /// AMM authority (PDA).
+    #[account]
+    pub amm_authority: Pubkey,
+
+    /// AMM open orders (Serum).
+    #[account(writable)]
+    pub amm_open_orders: Pubkey,
+
+    /// AMM target orders (can be default pubkey for non-orderbook pools).
+    #[account(writable)]
+    pub amm_target_orders: Pubkey,
+
+    /// Pool coin vault (base token).
+    #[account(writable)]
+    pub pool_coin_token_account: Pubkey,
+
+    /// Pool PC vault (quote token).
+    #[account(writable)]
+    pub pool_pc_token_account: Pubkey,
+
+    /// Serum program ID.
+    #[account]
+    pub serum_program_id: Pubkey,
+
+    /// Serum market.
+    #[account(writable)]
+    pub serum_market: Pubkey,
+
+    /// Serum bids.
+    #[account(writable)]
+    pub serum_bids: Pubkey,
+
+    /// Serum asks.
+    #[account(writable)]
+    pub serum_asks: Pubkey,
+
+    /// Serum event queue.
+    #[account(writable)]
+    pub serum_event_queue: Pubkey,
+
+    /// Serum coin vault.
+    #[account(writable)]
+    pub serum_coin_vault_account: Pubkey,
+
+    /// Serum PC vault.
+    #[account(writable)]
+    pub serum_pc_vault_account: Pubkey,
+
+    /// Serum vault signer.
+    #[account]
+    pub serum_vault_signer: Pubkey,
+
+    /// User source token account.
+    #[account(writable)]
+    pub user_source_token_account: Pubkey,
+
+    /// User destination token account.
+    #[account(writable)]
+    pub user_destination_token_account: Pubkey,
+
+    /// User wallet (signer).
+    #[account(signer)]
+    pub user_source_owner: Pubkey,
+}
 
 // =============================================================================
 // Builders

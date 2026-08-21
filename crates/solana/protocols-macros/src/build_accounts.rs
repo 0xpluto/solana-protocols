@@ -69,12 +69,20 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident.clone();
 
-    // Struct-level fixture (optional).
+    // Struct-level fixture, or a stated reason there is none.
+    //
+    // A builder with no replay is a builder nobody has ever compared against a
+    // real landed instruction, and an absent attribute is indistinguishable
+    // from an author who never considered it. Requiring one or the other turns
+    // that into a fact the census can count.
     let mut fixture: Option<LitStr> = None;
+    let mut unreplayed: Option<String> = None;
     for attr in &input.attrs {
         if attr.path().is_ident("build") {
             let _ = attr.parse_nested_meta(|m| {
-                if m.path.is_ident("fixture") {
+                if m.path.is_ident("unreplayed") {
+                    unreplayed = Some(m.value()?.parse::<LitStr>()?.value());
+                } else if m.path.is_ident("fixture") {
                     fixture = Some(m.value()?.parse()?);
                 }
                 Ok(())
@@ -295,6 +303,32 @@ pub fn derive(input: TokenStream) -> TokenStream {
         .collect();
 
     // Optional replay test: rebuild the real instruction from its own inputs.
+    // One or the other: a replay, or a stated reason there is none.
+    if fixture.is_none() && unreplayed.as_ref().is_none_or(|r| r.trim().len() < 12) {
+        return syn::Error::new_spanned(
+            name,
+            "#[derive(BuildAccounts)] needs #[build(fixture = \"…\")] — one real landed \
+             instruction to rebuild and compare — or #[build(unreplayed = \"why not\")]. \
+             A builder never compared against a landed instruction is exactly where a \
+             derivation drifts from the program, and an absent attribute cannot be told \
+             apart from an author who never considered it",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let struct_label = name.to_string();
+    // Appended slots that carry a derivation -- the ones a replay can check.
+    let tail_specs: Vec<&FieldSpec> = specs
+        .iter()
+        .filter(|s| {
+            matches!(
+                s.wrapper,
+                Wrapper::Conditional | Wrapper::ConditionalOptional
+            ) && !matches!(s.derivation, Derivation::Input)
+        })
+        .collect();
+    let has_derivable_tail = !tail_specs.is_empty();
     let replay = fixture.map(|fixture| {
         let input_args = specs
             .iter()
@@ -303,6 +337,46 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 let idx = s.index;
                 quote! { real[#idx] }
             });
+        // One assertion per appended slot that has a derivation.
+        //
+        // Compared against the derivation, never against `built.field`: a
+        // `ConditionalOptional` is deliberately *not* appended by the builder
+        // (a cashback accumulator on a coin without cashback is an account the
+        // program did not ask for), so reading it back off `built` would test
+        // the builder's opt-in policy and pass whatever the seeds said. The
+        // derivation is what a caller who opts in would place, and it is what
+        // has to be right.
+        let input_binds: Vec<TokenStream2> = specs
+            .iter()
+            .filter(|s| matches!(s.derivation, Derivation::Input))
+            .map(|s| {
+                let id = &s.ident;
+                let idx = s.index;
+                quote! { let #id = real[#idx]; }
+            })
+            .collect();
+        let all_bindings = bindings.clone();
+        let tail_checks: Vec<TokenStream2> = tail_specs
+            .iter()
+            .map(|s| {
+                let id = &s.ident;
+                let label = id.to_string();
+                quote! {
+                    if let crate::parsing::accounts::Conditional::Present(on_chain) = parsed.#id {
+                        assert_eq!(
+                            #id, on_chain,
+                            "appended account `{}` derives to the wrong address for {}: \
+                             the chain carried a different one, so an instruction built \
+                             with our derivation would name an account the program does \
+                             not expect",
+                            #label, fx.signature,
+                        );
+                        checked += 1;
+                    }
+                }
+            })
+            .collect();
+
         let test_mod = format_ident!("__build_replay_{}", name.to_string().to_lowercase());
         quote! {
             #[cfg(test)]
@@ -311,26 +385,63 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 /// Rebuild a real landed instruction from the inputs carried in
                 /// its own accounts — every derived PDA/ATA must match the chain.
                 #[test]
+                // Every field's derivation is re-run here to check the appended
+                // slots; the fixed ones are checked positionally and their
+                // bindings go unread.
+                #[allow(unused_variables)]
                 fn build_matches_real_instruction() {
                     let fx = crate::test_fixtures::InstructionFixture::load(#fixture);
                     let real = fx.pubkeys();
                     let built = #name::derive(#(#input_args),*);
                     let built_keys: ::std::vec::Vec<_> =
                         built.to_account_metas().into_iter().map(|m| m.pubkey).collect();
-                    // Compare the DECLARED slots only. What follows them is
-                    // appended, and appended accounts are caller policy and
-                    // era-dependent: which buyback vaults get credited is the
-                    // sender's choice, and `ix_buy.json` was captured before
-                    // `bonding_curve_v2` existed at all. Demanding that a builder
-                    // reproduce a past caller's tail asserts something no builder
-                    // can know. The tail is checked where it can be — by
-                    // `from_pubkeys` against every observed length.
+                    // The fixed slots compare positionally.
                     let n = #name::ACCOUNT_COUNT.min(built_keys.len()).min(real.len());
                     assert_eq!(
                         &built_keys[..n],
                         &real[..n],
                         "built accounts must match the real instruction {}",
                         fx.signature,
+                    );
+
+                    // Appended slots cannot be compared by position: a caller who
+                    // sends no conditionals but two buyback vaults puts a vault
+                    // where our build puts a PDA, and a positional check would
+                    // call that a defect. But they are still derived, and a
+                    // builder that derives them wrongly emits an instruction the
+                    // program rejects — so presence is taken from the real
+                    // instruction and the *value* is asserted against ours.
+                    //
+                    // The tail was previously skipped wholesale, excused by the
+                    // buyback roster being caller policy. That is true of the
+                    // roster and false of the PDAs beside it.
+                    let parsed = <#name as crate::parsing::FromAccountKeys>::from_account_keys(
+                        &real,
+                    )
+                    .expect("the fixture's own account list must parse");
+                    #(#input_binds)*
+                    #(#all_bindings)*
+                    let mut checked = 0usize;
+                    #(#tail_checks)*
+                    println!(
+                        "{}: {} appended slot(s) verified against {}",
+                        #struct_label, checked, fx.signature,
+                    );
+                    // Which appended slots a capture carries is the caller's
+                    // choice, but *which capture we replay* is ours. A struct
+                    // with derivable appended accounts replayed against an
+                    // instruction that has none proves nothing about them, and
+                    // says so only in a println nobody reads. This fired on
+                    // `buy`, whose fixture was an 18-account instruction while
+                    // a 19-account one sat beside it in the same directory.
+                    assert!(
+                        !(#has_derivable_tail && checked == 0),
+                        "{} derives appended accounts, but the replay fixture {} \
+                         carries none of them, so none is checked. Point \
+                         #[build(fixture = ...)] at a capture whose account list \
+                         runs past the fixed slots",
+                        #struct_label,
+                        #fixture,
                     );
                 }
             }

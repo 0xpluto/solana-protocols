@@ -24,6 +24,9 @@ const Q64_F64: f64 = 18_446_744_073_709_551_616.0;
 #[derive(Debug, Clone, Default, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
 #[idl(program = "meteora_dbc", account = "VolatilityTracker")]
 #[state(no_discriminator)]
+#[state(
+    unverified = "not an account of its own: a field inside VirtualPool, decoded as part of it and pinned by that account's golden fixture. A fixture here would capture bytes no program ever writes standalone"
+)]
 pub struct VolatilityTracker {
     /// Last fee update timestamp.
     pub last_update_timestamp: u64,
@@ -43,6 +46,9 @@ pub struct VolatilityTracker {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, borsh::BorshDeserialize, OnchainState)]
 #[idl(program = "meteora_dbc", account = "PoolMetrics")]
 #[state(no_discriminator)]
+#[state(
+    unverified = "not an account of its own: a field inside VirtualPool, decoded as part of it and pinned by that account's golden fixture. A fixture here would capture bytes no program ever writes standalone"
+)]
 pub struct PoolMetrics {
     /// Total protocol base token fees.
     pub total_protocol_base_fee: u64,

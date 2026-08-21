@@ -4,7 +4,9 @@
 
 pub mod swap;
 
-pub use swap::{Swap2Params, SwapAccounts, SwapBuilder, SwapBuilderConfig, SwapMode, SwapParams};
+pub use swap::{
+    Swap2Accounts, Swap2Params, SwapAccounts, SwapBuilder, SwapBuilderConfig, SwapMode, SwapParams,
+};
 
 use crate::parsing::{ClassifiesAsSwap, SwapAmount, SwapClassification};
 use crate::traits::SwapDirection;
